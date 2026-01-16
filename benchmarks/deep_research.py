@@ -5,6 +5,9 @@ import random
 import time
 import json
 import os
+from datasets import load_dataset, Dataset
+import subprocess
+import sys
 
 class DeepResearchBenchmark(BaseBenchmark):
     """Deep Research benchmark implementation for BrowseComp-Plus style tasks."""
@@ -30,16 +33,134 @@ class DeepResearchBenchmark(BaseBenchmark):
     
     def load_dataset(self):
         """Load or generate Deep Research dataset."""
-        dataset_path = self.config.get("dataset_path")
+        # Check if using BrowseComp-Plus
+        use_browsecomp_plus = self.config.get("use_browsecomp_plus", False)
         
-        if dataset_path and os.path.exists(dataset_path):
-            self._load_from_file(dataset_path)
+        if use_browsecomp_plus:
+            self._load_browsecomp_plus_dataset()
         else:
-            self._generate_synthetic_dataset()
+            dataset_path = self.config.get("dataset_path")
+            
+            if dataset_path and os.path.exists(dataset_path):
+                self._load_from_file(dataset_path)
+            else:
+                self._generate_synthetic_dataset()
         
         # Ensure we don't exceed max tasks
         if len(self.dataset) > self.config.get("max_tasks", 30):
             self.dataset = self.dataset[:self.config.get("max_tasks", 30)]
+    
+    def _setup_browsecomp_plus(self, output_dir: str = "data"):
+        """Setup BrowseComp-Plus dataset."""
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Download queries and relevance judgments
+        print("Downloading BrowseComp-Plus dataset...")
+        try:
+            # Check if datasets is installed
+            subprocess.run([sys.executable, "-m", "pip", "install", "datasets"], 
+                          check=True, capture_output=True)
+            
+            # Download and decrypt dataset
+            decrypt_script = """
+from datasets import load_dataset
+import json
+import os
+
+# Download queries
+print("Downloading queries...")
+queries = load_dataset("Tevatron/browsecomp-plus", split="queries")
+queries.to_json(os.path.join("data", "queries.jsonl"), lines=True)
+
+# Download corpus (not obfuscated)
+print("Downloading corpus...")
+corpus = load_dataset("Tevatron/browsecomp-plus-corpus", split="train")
+corpus.to_json(os.path.join("data", "corpus.jsonl"), lines=True)
+
+print("BrowseComp-Plus setup completed successfully!")
+"""
+            
+            with open("download_browsecomp_plus.py", "w") as f:
+                f.write(decrypt_script)
+            
+            subprocess.run([sys.executable, "download_browsecomp_plus.py"], 
+                          check=True, capture_output=True)
+            
+            os.remove("download_browsecomp_plus.py")
+            return True
+        except Exception as e:
+            print(f"Error setting up BrowseComp-Plus: {e}")
+            return False
+    
+    def _load_browsecomp_plus_dataset(self):
+        """Load BrowseComp-Plus dataset."""
+        data_dir = self.config.get("browsecomp_plus_data_dir", "data")
+        
+        # Check if dataset is already downloaded
+        if not os.path.exists(os.path.join(data_dir, "queries.jsonl")):
+            if not self._setup_browsecomp_plus(data_dir):
+                print("Falling back to synthetic dataset generation...")
+                self._generate_synthetic_dataset()
+                return
+        
+        try:
+            print("Loading BrowseComp-Plus dataset...")
+            
+            # Load queries
+            queries = load_dataset("json", data_files=os.path.join(data_dir, "queries.jsonl"), split="train")
+            
+            # Load corpus
+            corpus = load_dataset("json", data_files=os.path.join(data_dir, "corpus.jsonl"), split="train")
+            
+            # Convert to dictionaries for faster access
+            corpus_dict = {item["docid"]: item for item in corpus}
+            
+            # Process tasks
+            self.dataset = []
+            max_tasks = self.config.get("max_tasks", 30)
+            
+            for i, query in enumerate(queries):
+                if i >= max_tasks:
+                    break
+                
+                # Get relevant documents for this query
+                relevant_docids = query.get("relevant_docids", [])
+                sources = []
+                
+                # Collect relevant sources
+                for docid in relevant_docids[:5]:  # Use up to 5 relevant documents
+                    if docid in corpus_dict:
+                        doc = corpus_dict[docid]
+                        sources.append({
+                            "type": "research_paper",
+                            "title": doc.get("title", "Unknown Title"),
+                            "content": doc.get("text", ""),
+                            "docid": docid
+                        })
+                
+                if sources:
+                    task = {
+                        "topic": query.get("topic", "general_research"),
+                        "sources": sources,
+                        "query": query.get("query", ""),
+                        "correct_answer": query.get("answer", ""),
+                        "context": self._format_sources_for_context(sources),
+                        "context_length": len(self._format_sources_for_context(sources)),
+                        "query_id": query.get("query_id", str(i)),
+                        "relevant_docids": relevant_docids
+                    }
+                    self.dataset.append(task)
+            
+            print(f"Loaded {len(self.dataset)} BrowseComp-Plus tasks")
+            
+            if not self.dataset:
+                print("No tasks loaded, falling back to synthetic dataset...")
+                self._generate_synthetic_dataset()
+                
+        except Exception as e:
+            print(f"Error loading BrowseComp-Plus dataset: {e}")
+            print("Falling back to synthetic dataset generation...")
+            self._generate_synthetic_dataset()
     
     def _load_from_file(self, dataset_path: str):
         """Load dataset from JSON file."""
@@ -443,7 +564,7 @@ class DeepResearchBenchmark(BaseBenchmark):
         return found_points >= 2
     
     def compute_metrics(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Calculate Deep Research benchmark metrics."""
+        """Calculate Deep Research benchmark metrics including BrowseComp-Plus metrics."""
         if not results:
             return {"error": "No results available"}
         
@@ -477,7 +598,37 @@ class DeepResearchBenchmark(BaseBenchmark):
         total_tokens = sum(r.get("tokens_processed", 0) for r in results)
         avg_tokens_per_task = total_tokens / total if total > 0 else 0
         
+        # BrowseComp-Plus metrics
+        # Recall calculation (for BrowseComp-Plus tasks)
+        recall_scores = []
+        for result in results:
+            if "relevant_docids" in result and "retrieved_docids" in result:
+                relevant = set(result["relevant_docids"])
+                retrieved = set(result["retrieved_docids"])
+                if relevant:
+                    recall = len(relevant.intersection(retrieved)) / len(relevant)
+                    recall_scores.append(recall)
+        
+        average_recall = sum(recall_scores) / len(recall_scores) if recall_scores else 0
+        
+        # Tool call analysis (if available)
+        tool_call_counts = {}
+        for result in results:
+            if "tool_call_counts" in result:
+                for tool, count in result["tool_call_counts"].items():
+                    tool_call_counts[tool] = tool_call_counts.get(tool, 0) + count
+        
+        # Status analysis
+        status_counts = {}
+        for result in results:
+            status = result.get("status", "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        # Calibration error placeholder (would require confidence scores)
+        calibration_error = 0.0  # Placeholder for actual calibration error calculation
+        
         metrics = {
+            # Original metrics
             "overall_accuracy": f"{overall_accuracy:.2%}",
             "topic_accuracy": topic_accuracy,
             "length_accuracy": length_accuracy,
@@ -486,7 +637,15 @@ class DeepResearchBenchmark(BaseBenchmark):
             "average_time_per_task": f"{avg_time_per_task:.2f}s",
             "total_evaluation_time": f"{total_time:.2f}s",
             "average_tokens_per_task": f"{avg_tokens_per_task:.0f}",
-            "total_tokens_processed": f"{total_tokens:,}"
+            "total_tokens_processed": f"{total_tokens:,}",
+            
+            # BrowseComp-Plus metrics
+            "accuracy_percent": f"{overall_accuracy * 100:.2f}%",
+            "recall_percent": f"{average_recall * 100:.2f}%",
+            "calibration_error_percent": f"{calibration_error:.2f}%",
+            "tool_call_counts": tool_call_counts,
+            "status_counts": status_counts,
+            "avg_tool_stats": {tool: count / total for tool, count in tool_call_counts.items()} if total > 0 else {}
         }
         
         return metrics

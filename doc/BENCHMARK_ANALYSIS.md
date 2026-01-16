@@ -21,6 +21,37 @@ Based on the analysis of the RLM blog post (https://alexzhang13.github.io/blog/2
 - RLMs showed no performance degradation with 10M+ tokens at inference time
 **Purpose:** Evaluates deep research capabilities requiring extensive information synthesis
 
+#### BrowseComp-Plus Setup Instructions
+**Official Dataset:** [Tevatron/browsecomp-plus](https://huggingface.co/datasets/Tevatron/browsecomp-plus)
+
+**Setup Steps:**
+1. **Automatic Setup:**
+   ```bash
+   python setup_browsecomp_plus.py --data-dir data
+   ```
+
+2. **Manual Setup:**
+   - Install required packages: `pip install datasets`
+   - Download queries: `from datasets import load_dataset; queries = load_dataset("Tevatron/browsecomp-plus", split="queries")`
+   - Download corpus: `corpus = load_dataset("Tevatron/browsecomp-plus-corpus", split="train")`
+
+3. **Configuration Options:**
+   ```python
+   config = {
+       "use_browsecomp_plus": True,
+       "browsecomp_plus_data_dir": "data",
+       "max_tasks": 30,
+       "hf_token": "your_hugging_face_token"  # Optional
+   }
+   ```
+
+4. **Evaluation Metrics:**
+   - Accuracy (%)
+   - Recall (%)
+   - Calibration Error (%)
+   - Tool Call Statistics
+   - Status Analysis
+
 ### 3. RULER Benchmark (Needle-in-Haystack)
 **Type:** Context Retrieval Benchmark
 **Description:** Popular needle-in-the-haystack benchmark

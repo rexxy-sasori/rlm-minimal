@@ -69,6 +69,25 @@ class DeepResearchConfig(BenchmarkConfig):
     dataset_path: Optional[str] = "data/browsecomp_plus.json"
     max_tasks: int = 30
     context_lengths: list = field(default_factory=lambda: [1000000, 5000000, 10000000])
+    
+    # BrowseComp-Plus specific configuration
+    use_browsecomp_plus: bool = False
+    browsecomp_plus_data_dir: str = "data"
+    hf_token: Optional[str] = None
+    download_corpus: bool = True
+    use_official_evaluation: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary with BrowseComp-Plus fields."""
+        base_dict = super().to_dict()
+        base_dict.update({
+            "use_browsecomp_plus": self.use_browsecomp_plus,
+            "browsecomp_plus_data_dir": self.browsecomp_plus_data_dir,
+            "hf_token": self.hf_token,
+            "download_corpus": self.download_corpus,
+            "use_official_evaluation": self.use_official_evaluation,
+        })
+        return base_dict
 
 @dataclass
 class RULERConfig(BenchmarkConfig):
