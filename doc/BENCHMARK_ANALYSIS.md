@@ -16,10 +16,19 @@ Based on the analysis of the RLM blog post (https://alexzhang13.github.io/blog/2
 **Official Repository:** [abertsch72/oolong](https://github.com/abertsch72/oolong)
 
 **Setup Steps:**
-1. **Automatic Setup:**
+1. **Automatic Setup (Recommended):**
    ```bash
-   python scripts/setup_oolong.py --data-dir data/oolong
+   # Setup just OOLONG
+   python scripts/setup_datasets.py --dataset oolong --data-dir data
+   
+   # Or setup all datasets including OOLONG
+   python scripts/setup_datasets.py --dataset all --data-dir data
    ```
+
+   This will automatically:
+   - Clone the official OOLONG repository
+   - Install all required dependencies
+   - Set up the directory structure
 
 2. **Manual Setup:**
    - Clone the repository: `git clone https://github.com/abertsch72/oolong.git data/oolong/oolong`
@@ -57,7 +66,12 @@ Based on the analysis of the RLM blog post (https://alexzhang13.github.io/blog/2
 **Setup Steps:**
 1. **Automatic Setup:**
    ```bash
-   python setup_browsecomp_plus.py --data-dir data
+   python scripts/setup_datasets.py --dataset browsecomp_plus --data-dir data
+   ```
+
+   Or setup all datasets at once:
+   ```bash
+   python scripts/setup_datasets.py --dataset all --data-dir data
    ```
 
 2. **Manual Setup:**

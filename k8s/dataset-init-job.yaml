@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dataset-init-job
+  labels:
+    app: rlm-benchmark
+    component: dataset-init
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: dataset-downloader
+        image: rlm-minimal:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: huggingface-token
+              optional: true
+        - name: DATASET_TYPE
+          value: "all"
+        - name: DATA_DIR
+          value: "/data"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "1Gi"
+          limits:
+            cpu: "1000m"
+            memory: "4Gi"
+        volumeMounts:
+        - name: dataset-volume
+          mountPath: /data
+        command: ["python", "scripts/setup_datasets.py"]
+        args:
+        - "--dataset"
+        - "$(DATASET_TYPE)"
+        - "--data-dir"
+        - "$(DATA_DIR)"
+      volumes:
+      - name: dataset-volume
+        persistentVolumeClaim:
+          claimName: dataset-pvc
+  backoffLimit: 3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dataset-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi

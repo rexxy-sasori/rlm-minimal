@@ -22,12 +22,22 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
+# Make scripts executable
+RUN chmod +x scripts/*.sh scripts/*.py
+
 # Create a non-root user for security
 RUN useradd -m appuser && chown -R appuser /app
 USER appuser
 
 # Default command (can be overridden)
 CMD ["python", "main.py"]
+
+# Dataset setup command (can be used during build or runtime)
+# docker build --build-arg SETUP_DATASETS=true -t rlm-minimal:latest .
+ARG SETUP_DATASETS=false
+RUN if [ "$SETUP_DATASETS" = "true" ]; then \
+    python scripts/setup_datasets.py --dataset all; \
+fi
 
 # Example run command:
 # docker run -e OPENAI_API_KEY="sk-xxx" rlm-minimal

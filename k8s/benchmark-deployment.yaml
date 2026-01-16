@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rlm-benchmark
+  labels:
+    app: rlm-benchmark
+    component: benchmark-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rlm-benchmark
+  template:
+    metadata:
+      labels:
+        app: rlm-benchmark
+        component: benchmark-runner
+    spec:
+      restartPolicy: Never
+      initContainers:
+      - name: dataset-checker
+        image: rlm-minimal:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: USE_OFFICIAL_DATASETS
+          value: "false"
+        - name: DATA_DIR
+          value: "/data"
+        volumeMounts:
+        - name: dataset-volume
+          mountPath: /data
+        command: ["sh", "-c"]
+        args:
+        - |
+          if [ "$USE_OFFICIAL_DATASETS" = "true" ]; then
+            echo "Checking for official datasets..."
+            if [ ! -f "/data/queries.jsonl" ] || [ ! -f "/data/corpus.jsonl" ]; then
+              echo "ERROR: Official datasets not found!"
+              echo "Please run the dataset initialization job first:"
+              echo "  kubectl apply -f k8s/dataset-init-job.yaml"
+              exit 1
+            fi
+            echo "Official datasets found - proceeding"
+          else
+            echo "Using synthetic datasets (no official dataset required)"
+          fi
+      containers:
+      - name: rlm-benchmark-container
+        image: rlm-minimal:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: openai-api-key
+              optional: false
+        - name: LLM_MODEL
+          value: "gpt-4o"
+        - name: LLM_RECURSIVE_MODEL
+          value: "gpt-4o"
+        - name: BENCHMARK_TYPE
+          value: "oolong"
+        - name: NUM_EXAMPLES
+          value: "10"
+        - name: OUTPUT_FILE
+          value: "/results/benchmark-results.json"
+        - name: USE_OFFICIAL_DATASETS
+          value: "false"
+        - name: DATA_DIR
+          value: "/data"
+        - name: OOLONG_DATA_DIR
+          value: "/data/oolong"
+        - name: BROWSECOMP_PLUS_DATA_DIR
+          value: "/data"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "2Gi"
+        volumeMounts:
+        - name: results-volume
+          mountPath: /results
+        - name: dataset-volume
+          mountPath: /data
+        command: ["python"]
+        args:
+        - "run_benchmarks.py"
+        - "$(BENCHMARK_TYPE)"
+        - "--num-examples"
+        - "$(NUM_EXAMPLES)"
+        - "--output"
+        - "$(OUTPUT_FILE)"
+      volumes:
+      - name: results-volume
+        emptyDir: {}
+      - name: dataset-volume
+        persistentVolumeClaim:
+          claimName: dataset-pvc
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-secrets
+type: Opaque
+stringData:
+  openai-api-key: "your-openai-api-key-here"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rlm-benchmark-service
+  labels:
+    app: rlm-benchmark
+spec:
+  type: ClusterIP
+  selector:
+    app: rlm-benchmark
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
