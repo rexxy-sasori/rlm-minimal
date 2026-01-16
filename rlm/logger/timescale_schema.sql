@@ -75,6 +75,15 @@ CREATE TABLE llm_interactions (
     completion_tokens INTEGER,
     total_tokens INTEGER,
     
+    -- Token cache tracking (from prompt_tokens_details)
+    cached_tokens INTEGER DEFAULT 0,
+    uncached_prompt_tokens INTEGER,
+    
+    -- Token pricing (for cost calculation)
+    prompt_token_price DOUBLE PRECISION, -- Price per 1k tokens
+    completion_token_price DOUBLE PRECISION, -- Price per 1k tokens
+    total_cost DOUBLE PRECISION, -- Calculated cost for this interaction
+    
     -- Timing
     duration_ms DOUBLE PRECISION NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
@@ -108,6 +117,11 @@ CREATE INDEX idx_llm_model ON llm_interactions (model, time DESC);
 CREATE INDEX idx_llm_model_type ON llm_interactions (model_type, time DESC);
 CREATE INDEX idx_llm_duration ON llm_interactions (duration_ms DESC, time DESC);
 CREATE INDEX idx_llm_metadata_gin ON llm_interactions USING GIN (metadata);
+
+-- Token cache indexes
+CREATE INDEX idx_llm_cached_tokens ON llm_interactions (cached_tokens DESC, time DESC);
+CREATE INDEX idx_llm_total_tokens ON llm_interactions (total_tokens DESC, time DESC);
+CREATE INDEX idx_llm_total_cost ON llm_interactions (total_cost DESC, time DESC);
 
 -- Code executions table (detailed)
 CREATE TABLE code_executions (
@@ -172,7 +186,18 @@ CREATE TABLE query_run_summaries (
     p50_llm_latency_ms DOUBLE PRECISION,
     p90_llm_latency_ms DOUBLE PRECISION,
     p99_llm_latency_ms DOUBLE PRECISION,
+    
+    -- Token metrics
     total_llm_tokens INTEGER,
+    total_prompt_tokens INTEGER,
+    total_completion_tokens INTEGER,
+    total_cached_tokens INTEGER,
+    total_uncached_tokens INTEGER,
+    cache_hit_rate DOUBLE PRECISION, -- Cached tokens / total prompt tokens
+    
+    -- Cost metrics
+    total_cost DOUBLE PRECISION,
+    avg_cost_per_interaction DOUBLE PRECISION,
     
     -- Code execution metrics
     avg_code_latency_ms DOUBLE PRECISION,
@@ -196,6 +221,47 @@ CREATE TABLE query_run_summaries (
 CREATE INDEX idx_summary_query_id ON query_run_summaries (query_id);
 CREATE INDEX idx_summary_run_id ON query_run_summaries (run_id);
 CREATE INDEX idx_summary_status ON query_run_summaries (status);
+CREATE INDEX idx_summary_total_cost ON query_run_summaries (total_cost DESC);
+CREATE INDEX idx_summary_cache_hit_rate ON query_run_summaries (cache_hit_rate DESC);
+
+-- Token cache optimization tracking table
+CREATE TABLE token_cache_optimization (
+    time TIMESTAMPTZ NOT NULL,
+    
+    query_id TEXT NOT NULL,
+    run_id TIMESTAMPTZ NOT NULL,
+    
+    -- Cache effectiveness
+    total_prompt_tokens INTEGER,
+    total_cached_tokens INTEGER,
+    cache_savings_tokens INTEGER, -- Tokens saved by cache
+    cache_savings_percentage DOUBLE PRECISION, -- (cached / total) * 100
+    
+    -- Cost savings
+    original_cost DOUBLE PRECISION, -- Cost without cache
+    cached_cost DOUBLE PRECISION, -- Actual cost with cache
+    cost_savings DOUBLE PRECISION, -- original - cached
+    cost_savings_percentage DOUBLE PRECISION, -- (savings / original) * 100
+    
+    -- Interaction breakdown
+    total_interactions INTEGER,
+    interactions_with_cache INTEGER,
+    interactions_without_cache INTEGER,
+    
+    -- Per-iteration cache analysis
+    cache_evolution JSONB, -- How cache usage changed per iteration
+    
+    PRIMARY KEY (query_id, run_id)
+);
+
+SELECT create_hypertable('token_cache_optimization', 'time',
+    chunk_time_interval => INTERVAL '1 day',
+    if_not_exists => TRUE);
+
+CREATE INDEX idx_cache_opt_query_id ON token_cache_optimization (query_id, time DESC);
+CREATE INDEX idx_cache_opt_run_id ON token_cache_optimization (run_id, time DESC);
+CREATE INDEX idx_cache_opt_savings ON token_cache_optimization (cost_savings DESC, time DESC);
+CREATE INDEX idx_cache_opt_percentage ON token_cache_optimization (cache_savings_percentage DESC, time DESC);
 
 -- Continuous aggregate for real-time latency monitoring
 CREATE MATERIALIZED VIEW latency_metrics_minute

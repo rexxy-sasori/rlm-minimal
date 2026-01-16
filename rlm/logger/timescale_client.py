@@ -51,6 +51,16 @@ class LLMInteractionRecord:
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
+    
+    # Token cache tracking (from prompt_tokens_details.cached_tokens)
+    cached_tokens: Optional[int] = 0
+    uncached_prompt_tokens: Optional[int] = None
+    
+    # Token pricing for cost calculation
+    prompt_token_price: Optional[float] = None  # Price per 1k tokens
+    completion_token_price: Optional[float] = None  # Price per 1k tokens
+    total_cost: Optional[float] = None  # Calculated cost
+    
     duration_ms: Optional[float] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -252,11 +262,24 @@ class TimescaleDBClient:
             record.end_time = datetime.now(timezone.utc)
         if not record.duration_ms:
             record.duration_ms = (record.end_time - record.start_time).total_seconds() * 1000
+        
+        # Calculate uncached tokens if not provided
+        if record.uncached_prompt_tokens is None and record.prompt_tokens is not None:
+            record.uncached_prompt_tokens = record.prompt_tokens - (record.cached_tokens or 0)
+        
+        # Calculate total cost if prices are provided
+        if record.total_cost is None and record.prompt_token_price is not None:
+            # Calculate cost: (prompt_tokens * prompt_price + completion_tokens * completion_price) / 1000
+            prompt_cost = (record.prompt_tokens or 0) * (record.prompt_token_price or 0) / 1000
+            completion_cost = (record.completion_tokens or 0) * (record.completion_token_price or 0) / 1000
+            record.total_cost = prompt_cost + completion_cost
 
         query = """
             INSERT INTO llm_interactions (
                 time, query_id, run_id, model, model_type,
                 prompt_tokens, completion_tokens, total_tokens,
+                cached_tokens, uncached_prompt_tokens,
+                prompt_token_price, completion_token_price, total_cost,
                 duration_ms, start_time, end_time,
                 context_messages, context_tokens, response_length,
                 has_tool_calls, tool_call_count, success,
@@ -264,6 +287,8 @@ class TimescaleDBClient:
             ) VALUES (
                 %(time)s, %(query_id)s, %(run_id)s, %(model)s, %(model_type)s,
                 %(prompt_tokens)s, %(completion_tokens)s, %(total_tokens)s,
+                %(cached_tokens)s, %(uncached_prompt_tokens)s,
+                %(prompt_token_price)s, %(completion_token_price)s, %(total_cost)s,
                 %(duration_ms)s, %(start_time)s, %(end_time)s,
                 %(context_messages)s, %(context_tokens)s, %(response_length)s,
                 %(has_tool_calls)s, %(tool_call_count)s, %(success)s,
@@ -280,6 +305,11 @@ class TimescaleDBClient:
             'prompt_tokens': record.prompt_tokens,
             'completion_tokens': record.completion_tokens,
             'total_tokens': record.total_tokens,
+            'cached_tokens': record.cached_tokens,
+            'uncached_prompt_tokens': record.uncached_prompt_tokens,
+            'prompt_token_price': record.prompt_token_price,
+            'completion_token_price': record.completion_token_price,
+            'total_cost': record.total_cost,
             'duration_ms': record.duration_ms,
             'start_time': record.start_time,
             'end_time': record.end_time,
@@ -639,6 +669,208 @@ class TimescaleDBClient:
             ORDER BY duration_ms DESC
             LIMIT %(n)s
         """, {'query_id': query_id, 'run_id': run_id, 'n': n})
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    # ========== Token Cache Analytics ==========
+
+    def get_token_cache_summary(self, query_id: str, run_id: datetime) -> Optional[Dict[str, Any]]:
+        """Get token cache summary for a query run."""
+        cursor = self._execute("""
+            SELECT
+                SUM(prompt_tokens) AS total_prompt_tokens,
+                SUM(completion_tokens) AS total_completion_tokens,
+                SUM(total_tokens) AS total_tokens,
+                SUM(cached_tokens) AS total_cached_tokens,
+                SUM(uncached_prompt_tokens) AS total_uncached_tokens,
+                
+                -- Cache effectiveness
+                CASE 
+                    WHEN SUM(prompt_tokens) > 0 
+                    THEN SUM(cached_tokens)::FLOAT / SUM(prompt_tokens) 
+                    ELSE 0 
+                END AS cache_hit_rate,
+                
+                -- Cost metrics
+                SUM(total_cost) AS total_cost,
+                AVG(total_cost) AS avg_cost_per_interaction,
+                
+                -- Interaction counts
+                COUNT(*) AS total_interactions,
+                COUNT(*) FILTER (WHERE cached_tokens > 0) AS interactions_with_cache,
+                COUNT(*) FILTER (WHERE cached_tokens = 0 OR cached_tokens IS NULL) AS interactions_without_cache,
+                
+                -- Cache savings calculation
+                SUM(prompt_tokens) AS original_prompt_tokens, -- Without cache
+                SUM(uncached_prompt_tokens) AS cached_prompt_tokens, -- With cache
+                SUM(prompt_tokens) - SUM(uncached_prompt_tokens) AS cache_savings_tokens
+            FROM llm_interactions
+            WHERE query_id = %(query_id)s AND run_id = %(run_id)s
+        """, {'query_id': query_id, 'run_id': run_id})
+
+        result = cursor.fetchone()
+        if result:
+            summary = dict(result)
+            
+            # Calculate cost savings
+            if summary.get('original_prompt_tokens') and summary.get('cached_prompt_tokens'):
+                summary['cache_savings_percentage'] = (
+                    (summary['original_prompt_tokens'] - summary['cached_prompt_tokens']) / 
+                    summary['original_prompt_tokens'] * 100
+                )
+            
+            return summary
+        return None
+
+    def get_token_cache_optimization(self, query_id: str, run_id: datetime) -> Optional[Dict[str, Any]]:
+        """Get detailed token cache optimization analysis."""
+        cursor = self._execute("""
+            SELECT * FROM token_cache_optimization
+            WHERE query_id = %(query_id)s AND run_id = %(run_id)s
+        """, {'query_id': query_id, 'run_id': run_id})
+
+        result = cursor.fetchone()
+        return dict(result) if result else None
+
+    def calculate_and_store_cache_optimization(self, query_id: str, run_id: datetime, conn=None):
+        """Calculate and store token cache optimization metrics."""
+        with self.connection() as conn:
+            cursor = self._execute("""
+                SELECT
+                    SUM(prompt_tokens) AS total_prompt_tokens,
+                    SUM(cached_tokens) AS total_cached_tokens,
+                    SUM(uncached_prompt_tokens) AS total_uncached_tokens,
+                    SUM(total_cost) AS total_cached_cost,
+                    COUNT(*) AS total_interactions,
+                    COUNT(*) FILTER (WHERE cached_tokens > 0) AS interactions_with_cache,
+                    COUNT(*) FILTER (WHERE cached_tokens = 0 OR cached_tokens IS NULL) AS interactions_without_cache,
+                    
+                    -- Calculate cost without cache (all prompt tokens at regular price)
+                    AVG(prompt_token_price) AS avg_prompt_price,
+                    AVG(completion_token_price) AS avg_completion_price
+                FROM llm_interactions
+                WHERE query_id = %(query_id)s AND run_id = %(run_id)s
+            """, {'query_id': query_id, 'run_id': run_id}, conn)
+
+            result = cursor.fetchone()
+            if not result:
+                return
+
+            total_prompt_tokens = result['total_prompt_tokens'] or 0
+            total_cached_tokens = result['total_cached_tokens'] or 0
+            total_uncached_tokens = result['total_uncached_tokens'] or 0
+            total_cached_cost = result['total_cached_cost'] or 0
+            avg_prompt_price = result['avg_prompt_price'] or 0
+            avg_completion_price = result['avg_completion_price'] or 0
+
+            # Calculate cost without cache
+            original_cost = (total_prompt_tokens * avg_prompt_price / 1000) + \
+                           (result['total_completion_tokens'] or 0) * avg_completion_price / 1000
+
+            cache_savings_tokens = total_cached_tokens
+            cache_savings_percentage = (cache_savings_tokens / total_prompt_tokens * 100) if total_prompt_tokens > 0 else 0
+            
+            cost_savings = original_cost - total_cached_cost
+            cost_savings_percentage = (cost_savings / original_cost * 100) if original_cost > 0 else 0
+
+            # Get per-iteration cache evolution
+            cursor2 = self._execute("""
+                SELECT
+                    iteration,
+                    SUM(prompt_tokens) AS prompt_tokens,
+                    SUM(cached_tokens) AS cached_tokens,
+                    SUM(uncached_prompt_tokens) AS uncached_tokens,
+                    COUNT(*) AS interaction_count
+                FROM llm_interactions
+                WHERE query_id = %(query_id)s AND run_id = %(run_id)s AND iteration IS NOT NULL
+                GROUP BY iteration
+                ORDER BY iteration
+            """, {'query_id': query_id, 'run_id': run_id}, conn)
+
+            cache_evolution = []
+            for row in cursor2.fetchall():
+                cache_evolution.append({
+                    'iteration': row['iteration'],
+                    'prompt_tokens': row['prompt_tokens'],
+                    'cached_tokens': row['cached_tokens'],
+                    'uncached_tokens': row['uncached_tokens'],
+                    'cache_hit_rate': row['cached_tokens'] / row['prompt_tokens'] if row['prompt_tokens'] > 0 else 0
+                })
+
+            # Store optimization data
+            insert_query = """
+                INSERT INTO token_cache_optimization (
+                    time, query_id, run_id,
+                    total_prompt_tokens, total_cached_tokens,
+                    cache_savings_tokens, cache_savings_percentage,
+                    original_cost, cached_cost, cost_savings, cost_savings_percentage,
+                    total_interactions, interactions_with_cache, interactions_without_cache,
+                    cache_evolution
+                ) VALUES (
+                    %(time)s, %(query_id)s, %(run_id)s,
+                    %(total_prompt_tokens)s, %(total_cached_tokens)s,
+                    %(cache_savings_tokens)s, %(cache_savings_percentage)s,
+                    %(original_cost)s, %(cached_cost)s, %(cost_savings)s, %(cost_savings_percentage)s,
+                    %(total_interactions)s, %(interactions_with_cache)s, %(interactions_without_cache)s,
+                    %(cache_evolution)s
+                ) ON CONFLICT (query_id, run_id) DO UPDATE SET
+                    total_prompt_tokens = EXCLUDED.total_prompt_tokens,
+                    total_cached_tokens = EXCLUDED.total_cached_tokens,
+                    cache_savings_tokens = EXCLUDED.cache_savings_tokens,
+                    cache_savings_percentage = EXCLUDED.cache_savings_percentage,
+                    original_cost = EXCLUDED.original_cost,
+                    cached_cost = EXCLUDED.cached_cost,
+                    cost_savings = EXCLUDED.cost_savings,
+                    cost_savings_percentage = EXCLUDED.cost_savings_percentage,
+                    total_interactions = EXCLUDED.total_interactions,
+                    interactions_with_cache = EXCLUDED.interactions_with_cache,
+                    interactions_without_cache = EXCLUDED.interactions_without_cache,
+                    cache_evolution = EXCLUDED.cache_evolution
+            """
+
+            self._execute(insert_query, {
+                'time': datetime.now(timezone.utc),
+                'query_id': query_id,
+                'run_id': run_id,
+                'total_prompt_tokens': total_prompt_tokens,
+                'total_cached_tokens': total_cached_tokens,
+                'cache_savings_tokens': cache_savings_tokens,
+                'cache_savings_percentage': cache_savings_percentage,
+                'original_cost': original_cost,
+                'cached_cost': total_cached_cost,
+                'cost_savings': cost_savings,
+                'cost_savings_percentage': cost_savings_percentage,
+                'total_interactions': result['total_interactions'],
+                'interactions_with_cache': result['interactions_with_cache'],
+                'interactions_without_cache': result['interactions_without_cache'],
+                'cache_evolution': json.dumps(cache_evolution)
+            }, conn)
+
+    def get_top_cache_savings(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get queries with highest token cache savings."""
+        cursor = self._execute("""
+            SELECT * FROM token_cache_optimization
+            ORDER BY cost_savings DESC
+            LIMIT %(limit)s
+        """, {'limit': limit})
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_cache_effectiveness_by_model(self) -> List[Dict[str, Any]]:
+        """Get token cache effectiveness aggregated by model."""
+        cursor = self._execute("""
+            SELECT
+                model,
+                COUNT(*) AS total_interactions,
+                SUM(prompt_tokens) AS total_prompt_tokens,
+                SUM(cached_tokens) AS total_cached_tokens,
+                AVG(CASE WHEN prompt_tokens > 0 THEN cached_tokens::FLOAT / prompt_tokens ELSE 0 END) AS avg_cache_hit_rate,
+                SUM(total_cost) AS total_cost
+            FROM llm_interactions
+            WHERE time > NOW() - INTERVAL '7 days'
+            GROUP BY model
+            ORDER BY total_interactions DESC
+        """)
 
         return [dict(row) for row in cursor.fetchall()]
 
