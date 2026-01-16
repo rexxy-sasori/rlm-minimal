@@ -32,9 +32,10 @@ python rlm/rlm_repl.py
 ```
 rlm-minimal/
 ├── rlm/
-│   ├── logger/          # Logging utilities
-│   ├── utils/           # Utility functions
-│   └── rlm_repl.py      # Main REPL implementation
+│   ├── logger/              # Logging utilities
+│   ├── utils/               # Utility functions
+│   ├── rlm_repl.py          # Main REPL implementation
+│   └── rlm_repl_tsdb.py     # RLM_REPL with TimescaleDB integration
 ├── README.md
 └── requirements.txt
 ```
