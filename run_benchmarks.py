@@ -16,15 +16,18 @@ from benchmarks.deep_research import DeepResearchBenchmark
 from benchmarks.ruler import RULERBenchmark
 
 
-def run_oolong_benchmark(model, num_examples: int = 10) -> Dict[str, Any]:
+def run_oolong_benchmark(model, config: Dict[str, Any] = None) -> Dict[str, Any]:
     """Run the OOLONG benchmark."""
     print("\n" + "="*80)
     print("OOLONG BENCHMARK")
     print("="*80)
     
-    benchmark = OOLONGBenchmark(num_examples=num_examples)
+    if config is None:
+        config = {"max_tasks": 10}
     
-    print(f"\nRunning OOLONG benchmark with {num_examples} examples...")
+    benchmark = OOLONGBenchmark(config)
+    
+    print(f"\nRunning OOLONG benchmark with {config.get('max_tasks', 10)} examples...")
     print("This benchmark tests difficult long-context tasks including:")
     print("  - Fact retrieval")
     print("  - Multi-hop reasoning")
@@ -32,31 +35,32 @@ def run_oolong_benchmark(model, num_examples: int = 10) -> Dict[str, Any]:
     print("  - Summarization")
     print("  - Inference")
     
-    results = benchmark.run_benchmark(model, max_examples=num_examples)
+    results = benchmark.evaluate(model)
+    metrics = benchmark.compute_metrics(results)
     
     print(f"\nOOLONG Results:")
-    print(f"  Accuracy: {results['accuracy']:.2%}")
-    print(f"  Correct: {results['correct']}/{results['total']}")
+    print(f"  Accuracy: {metrics.get('overall_accuracy', 'N/A')}")
+    print(f"  Correct: {metrics.get('correct_tasks', 0)}/{metrics.get('total_tasks', 0)}")
     
     return {
         "name": "OOLONG",
-        "results": results
+        "results": results,
+        "metrics": metrics
     }
 
 
-def run_deep_research_benchmark(model, num_examples: int = 5, papers_per_example: int = 3) -> Dict[str, Any]:
+def run_deep_research_benchmark(model, config: Dict[str, Any] = None) -> Dict[str, Any]:
     """Run the Deep Research benchmark."""
     print("\n" + "="*80)
     print("DEEP RESEARCH BENCHMARK (BrowseComp-Plus)")
     print("="*80)
     
-    benchmark = DeepResearchBenchmark(
-        num_examples=num_examples,
-        papers_per_example=papers_per_example
-    )
+    if config is None:
+        config = {"max_tasks": 5}
     
-    print(f"\nRunning Deep Research benchmark with {num_examples} examples...")
-    print(f"Each example contains {papers_per_example} research papers")
+    benchmark = DeepResearchBenchmark(config)
+    
+    print(f"\nRunning Deep Research benchmark with {config.get('max_tasks', 5)} examples...")
     print("This benchmark tests complex research tasks including:")
     print("  - Literature review")
     print("  - Competitive analysis")
@@ -64,37 +68,43 @@ def run_deep_research_benchmark(model, num_examples: int = 5, papers_per_example
     print("  - Market research")
     print("  - Scientific synthesis")
     
-    results = benchmark.run_benchmark(model, max_examples=num_examples)
+    results = benchmark.evaluate(model)
+    metrics = benchmark.compute_metrics(results)
     
     print(f"\nDeep Research Results:")
-    print(f"  Average Score: {results['average_score']:.2%}")
-    print(f"  Total Examples: {results['total']}")
+    print(f"  Accuracy: {metrics.get('overall_accuracy', 'N/A')}")
+    print(f"  Correct: {metrics.get('correct_tasks', 0)}/{metrics.get('total_tasks', 0)}")
     
     return {
-        "name": "Deep Research (BrowseComp-Plus)",
-        "results": results
+        "name": "Deep Research",
+        "results": results,
+        "metrics": metrics
     }
 
 
-def run_ruler_benchmark(model, num_examples: int = 20) -> Dict[str, Any]:
+def run_ruler_benchmark(model, config: Dict[str, Any] = None) -> Dict[str, Any]:
     """Run the RULER benchmark."""
     print("\n" + "="*80)
     print("RULER BENCHMARK (Needle-in-Haystack)")
     print("="*80)
     
-    benchmark = RULERBenchmark(num_examples=num_examples)
+    if config is None:
+        config = {"max_tasks": 20}
     
-    print(f"\nRunning RULER benchmark with {num_examples} examples...")
+    benchmark = RULERBenchmark(config)
+    
+    print(f"\nRunning RULER benchmark with {config.get('max_tasks', 20)} examples...")
     print("This benchmark tests needle-in-haystack retrieval across:")
     print("  - Different context lengths (1K to 10M+ tokens)")
     print("  - Different needle positions (beginning, middle, end, distributed)")
     print("  - Different needle types (factual, numerical, entities, dates, quotes)")
     
-    results = benchmark.run_benchmark(model, max_examples=num_examples)
+    results = benchmark.evaluate(model)
+    metrics = benchmark.compute_metrics(results)
     
     print(f"\nRULER Results:")
-    print(f"  Accuracy: {results['accuracy']:.2%}")
-    print(f"  Correct: {results['correct']}/{results['total']}")
+    print(f"  Accuracy: {metrics.get('overall_accuracy', 'N/A')}")
+    print(f"  Correct: {metrics.get('correct_tasks', 0)}/{metrics.get('total_tasks', 0)}")
     
     print("\nRunning position analysis...")
     position_results = benchmark.run_position_analysis(model)
@@ -110,31 +120,40 @@ def run_ruler_benchmark(model, num_examples: int = 20) -> Dict[str, Any]:
     }
 
 
-def run_all_benchmarks(model, num_examples: int = 10) -> Dict[str, Any]:
+def run_all_benchmarks(model, config: Dict[str, Any] = None) -> Dict[str, Any]:
     """Run all benchmarks."""
     print("\n" + "#"*80)
     print("RLM BENCHMARK SUITE")
     print("#"*80)
     print("Running comprehensive benchmark suite for Recursive Language Models")
     
+    if config is None:
+        config = {"max_tasks": 10}
+    
     all_results = {}
     
     try:
-        oolong_results = run_oolong_benchmark(model, num_examples)
+        oolong_config = config.copy()
+        oolong_config["max_tasks"] = config.get("max_tasks", 10)
+        oolong_results = run_oolong_benchmark(model, oolong_config)
         all_results["oolong"] = oolong_results
     except Exception as e:
         print(f"\nError running OOLONG benchmark: {e}")
         all_results["oolong"] = {"error": str(e)}
     
     try:
-        deep_research_results = run_deep_research_benchmark(model, num_examples // 2)
+        deep_research_config = config.copy()
+        deep_research_config["max_tasks"] = config.get("max_tasks", 10) // 2
+        deep_research_results = run_deep_research_benchmark(model, deep_research_config)
         all_results["deep_research"] = deep_research_results
     except Exception as e:
         print(f"\nError running Deep Research benchmark: {e}")
         all_results["deep_research"] = {"error": str(e)}
     
     try:
-        ruler_results = run_ruler_benchmark(model, num_examples)
+        ruler_config = config.copy()
+        ruler_config["max_tasks"] = config.get("max_tasks", 10)
+        ruler_results = run_ruler_benchmark(model, ruler_config)
         all_results["ruler"] = ruler_results
     except Exception as e:
         print(f"\nError running RULER benchmark: {e}")
@@ -241,10 +260,9 @@ Benchmarks available:
     )
     
     parser.add_argument(
-        '--papers-per-example', '-p',
-        type=int,
-        default=3,
-        help='Number of papers per Deep Research example (default: 3)'
+        '--config', '-c',
+        type=str,
+        help='JSON configuration file for benchmarks'
     )
     
     parser.add_argument(
@@ -258,6 +276,13 @@ Benchmarks available:
     if args.benchmark == 'demo':
         demo_benchmarks()
         return
+    
+    # Load configuration
+    config = {"max_tasks": args.num_examples}
+    
+    if args.config:
+        with open(args.config, 'r') as f:
+            config = json.load(f)
     
     try:
         from rlm.rlm_repl import RLM_REPL
@@ -273,17 +298,13 @@ Benchmarks available:
         results = None
         
         if args.benchmark == 'oolong':
-            results = run_oolong_benchmark(rlm, args.num_examples)
+            results = run_oolong_benchmark(rlm, config)
         elif args.benchmark == 'deep_research':
-            results = run_deep_research_benchmark(
-                rlm, 
-                args.num_examples, 
-                args.papers_per_example
-            )
+            results = run_deep_research_benchmark(rlm, config)
         elif args.benchmark == 'ruler':
-            results = run_ruler_benchmark(rlm, args.num_examples)
+            results = run_ruler_benchmark(rlm, config)
         elif args.benchmark == 'all':
-            results = run_all_benchmarks(rlm, args.num_examples)
+            results = run_all_benchmarks(rlm, config)
         
         if args.output and results:
             with open(args.output, 'w') as f:
