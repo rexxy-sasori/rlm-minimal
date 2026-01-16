@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 - **[TimescaleDB Examples](examples/timescale_examples.py)**: Basic usage examples
 - **[Token Cache Examples](examples/token_cache_example.py)**: Token cache tracking examples
-- **[RLM Integration](examples/rlm_integration.py)**: Integration with RLM_REPL
+- **[RLM Integration](../rlm_integration.py)**: Integration with RLM_REPL (at rlm/ level)
 
 ## Project Structure
 
@@ -68,11 +68,14 @@ rlm/logger/
 │   └── TOKEN_CACHE_TRACKING.md
 ├── examples/                # Usage examples
 │   ├── timescale_examples.py
-│   ├── token_cache_example.py
-│   └── rlm_integration.py
+│   └── token_cache_example.py
 └── sql/                     # Database schemas
     └── timescale_schema.sql
 ```
+
+## RLM Integration
+
+The [rlm_integration.py](../rlm_integration.py) file is located at the `rlm/` level alongside `rlm_repl.py` for better visibility and easier integration with the main RLM implementation.
 
 When you run your code, you'll see something like this:
 
