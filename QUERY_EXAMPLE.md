@@ -2,6 +2,37 @@
 
 Yes! You can easily extract all related code and LLM records using a `(query_id, run_id)` pair.
 
+## Query Completion Tracking
+
+Yes! The system **does** log when a query finishes and calculates the total duration. Here's how:
+
+### Key Methods:
+
+```python
+# Initialize a query run
+client.initialize_query_run(query_id, run_id, metadata={"model": "gpt-4o"})
+
+# ... Run your query with LLM interactions and code executions ...
+
+# Complete the query run (calculates total duration automatically)
+client.complete_query_run(query_id, run_id, status='completed')
+
+# Get the summary with total duration
+summary = client.get_query_run_summary(query_id, run_id)
+print(f"Total Duration: {summary['total_duration_ms']:.2f} ms")
+print(f"Started: {summary['start_time']}")
+print(f"Completed: {summary['end_time']}")
+print(f"Status: {summary['status']}")
+```
+
+### What's Tracked:
+
+- ✅ **Start Time**: When the query began
+- ✅ **End Time**: When the query completed
+- ✅ **Total Duration**: Calculated automatically (end_time - start_time)
+- ✅ **Status**: 'running', 'completed', or 'error'
+- ✅ **Metrics**: LLM interactions, code executions, tokens, cost, errors, and more
+
 ## Quick Example
 
 ```python

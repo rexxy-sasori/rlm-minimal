@@ -53,6 +53,7 @@ pip install -r requirements.txt
 - **[TimescaleDB Examples](examples/timescale_examples.py)**: Basic usage examples
 - **[Token Cache Examples](examples/token_cache_example.py)**: Token cache tracking examples
 - **[Query Records Examples](examples/query_records_example.py)**: Extract all records for (query_id, run_id)
+- **[Completion Tracking Examples](examples/completion_tracking_example.py)**: Track query start/end and total duration
 - **[RLM REPL with TimescaleDB](../rlm_repl_tsdb.py)**: RLM_REPL integration with TimescaleDB (at rlm/ level)
 
 ## Project Structure
@@ -72,7 +73,8 @@ rlm/logger/
 ├── examples/                # Usage examples
 │   ├── timescale_examples.py
 │   ├── token_cache_example.py
-│   └── query_records_example.py
+│   ├── query_records_example.py
+│   └── completion_tracking_example.py
 └── sql/                     # Database schemas
     └── timescale_schema.sql
 ```

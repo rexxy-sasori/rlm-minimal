@@ -13,6 +13,98 @@ Given a `(query_id, run_id)` pair, you can extract all related records including
 
 ## Available Methods
 
+### Initialization and Completion Methods
+
+#### Initialize Query Run
+
+```python
+def initialize_query_run(self, query_id: str, run_id: datetime, 
+                        metadata: Dict[str, Any] = None, conn=None):
+    """
+    Initialize a query run summary.
+    
+    Args:
+        query_id: The query identifier
+        run_id: The run timestamp
+        metadata: Optional metadata dictionary
+        conn: Optional database connection
+    
+    Returns:
+        None
+    """
+```
+
+**Example:**
+```python
+client.initialize_query_run(
+    query_id,
+    run_id,
+    metadata={
+        "model": "gpt-4o",
+        "max_iterations": 20,
+        "description": "Needle in haystack example"
+    }
+)
+```
+
+#### Complete Query Run
+
+```python
+def complete_query_run(self, query_id: str, run_id: datetime, 
+                      status: str = 'completed', conn=None):
+    """
+    Mark a query run as completed and calculate total duration.
+    
+    Args:
+        query_id: The query identifier
+        run_id: The run timestamp
+        status: 'completed', 'error', or custom status
+        conn: Optional database connection
+    
+    Returns:
+        None
+    """
+```
+
+**Example:**
+```python
+# Normal completion
+client.complete_query_run(query_id, run_id, status='completed')
+
+# Error completion
+client.complete_query_run(query_id, run_id, status='error')
+```
+
+#### Update Query Run Summary
+
+```python
+def update_query_run_summary(self, query_id: str, run_id: datetime, conn=None):
+    """
+    Update query run summary with aggregated metrics.
+    Useful for long-running queries to get intermediate stats.
+    
+    Args:
+        query_id: The query identifier
+        run_id: The run timestamp
+        conn: Optional database connection
+    
+    Returns:
+        None
+    """
+```
+
+**Example:**
+```python
+# Update summary during long-running query
+client.update_query_run_summary(query_id, run_id)
+
+# Get intermediate stats
+summary = client.get_query_run_summary(query_id, run_id)
+print(f"Current LLM calls: {summary['total_llm_interactions']}")
+```
+
+### Query Methods
+
 ### 1. Get LLM Interactions
 
 ```python
