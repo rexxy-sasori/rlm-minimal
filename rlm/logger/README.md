@@ -46,11 +46,13 @@ pip install -r requirements.txt
 
 - **[Quick Start Guide](doc/QUICKSTART_TIMESCALE.md)**: Get started with TimescaleDB logging
 - **[Token Cache Tracking](doc/TOKEN_CACHE_TRACKING.md)**: Track token cache usage and cost savings
+- **[Query API Reference](doc/QUERY_API.md)**: Query and retrieve records using query_id and run_id
 
 ## Usage Examples
 
 - **[TimescaleDB Examples](examples/timescale_examples.py)**: Basic usage examples
 - **[Token Cache Examples](examples/token_cache_example.py)**: Token cache tracking examples
+- **[Query Records Examples](examples/query_records_example.py)**: Extract all records for (query_id, run_id)
 - **[RLM REPL with TimescaleDB](../rlm_repl_tsdb.py)**: RLM_REPL integration with TimescaleDB (at rlm/ level)
 
 ## Project Structure
@@ -65,10 +67,12 @@ rlm/logger/
 ├── timescale_client.py      # TimescaleDB client for latency tracking
 ├── doc/                     # Documentation
 │   ├── QUICKSTART_TIMESCALE.md
-│   └── TOKEN_CACHE_TRACKING.md
+│   ├── TOKEN_CACHE_TRACKING.md
+│   └── QUERY_API.md
 ├── examples/                # Usage examples
 │   ├── timescale_examples.py
-│   └── token_cache_example.py
+│   ├── token_cache_example.py
+│   └── query_records_example.py
 └── sql/                     # Database schemas
     └── timescale_schema.sql
 ```
