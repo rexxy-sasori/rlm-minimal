@@ -9,8 +9,11 @@ ENV PYTHONUNBUFFERED 1
 WORKDIR /app
 
 # Install system dependencies
+# - gcc: For compiling Python packages
+# - libpq-dev: For psycopg2 (PostgreSQL adapter)
 RUN apt-get update && apt-get install -y \
     gcc \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
@@ -48,4 +51,15 @@ fi
 #   -e LLM_MODEL="gpt-4o" \
 #   -e LLM_RECURSIVE_MODEL="gpt-5-mini" \
 #   -e LLM_RECURSIVE_BASE_URL="http://host.docker.internal:1234/v1" \
+#   rlm-minimal
+#
+# With TimescaleDB logging:
+# docker run \
+#   -e OPENAI_API_KEY="sk-xxx" \
+#   -e TIMESCALE_DB_HOST="timescaledb" \
+#   -e TIMESCALE_DB_PORT="5432" \
+#   -e TIMESCALE_DB_NAME="rlm_logs" \
+#   -e TIMESCALE_DB_USER="postgres" \
+#   -e TIMESCALE_DB_PASSWORD="password" \
+#   --network=your-network \
 #   rlm-minimal

@@ -1,3 +1,5 @@
+# Logger-specific dependencies
+# These are also included in the main requirements.txt
 psycopg2-binary>=2.9.9
 python-dotenv>=1.0.0
 rich>=13.7.0
