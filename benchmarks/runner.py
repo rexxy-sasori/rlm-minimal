@@ -244,16 +244,11 @@ def main():
                       help="Which benchmark to run")
     parser.add_argument("--output", default="results",
                       help="Output directory for results")
-    parser.add_argument("--model", default="gpt-5-mini",
-                      help="Model name to use")
-    
-    args = parser.parse_args()
-    
     # Import model here to avoid circular imports
     from rlm.rlm_repl import RLM_REPL
     
-    # Create model instance
-    model = RLM_REPL(model_name=args.model)
+    # Create model instance - uses environment variables by default
+    model = RLM_REPL()
     
     # Create runner
     runner = BenchmarkRunner()

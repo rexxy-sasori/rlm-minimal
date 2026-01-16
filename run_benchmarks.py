@@ -289,8 +289,6 @@ Benchmarks available:
         
         print("Initializing RLM model...")
         rlm = RLM_REPL(
-            model="gpt-5",
-            recursive_model="gpt-5-mini",
             enable_logging=False,
             max_iterations=10
         )
