@@ -49,9 +49,30 @@ pip install -r requirements.txt
 
 ## Usage Examples
 
-- **[TimescaleDB Examples](timescale_examples.py)**: Basic usage examples
-- **[Token Cache Examples](token_cache_example.py)**: Token cache tracking examples
-- **[RLM Integration](rlm_integration.py)**: Integration with RLM_REPL
+- **[TimescaleDB Examples](examples/timescale_examples.py)**: Basic usage examples
+- **[Token Cache Examples](examples/token_cache_example.py)**: Token cache tracking examples
+- **[RLM Integration](examples/rlm_integration.py)**: Integration with RLM_REPL
+
+## Project Structure
+
+```
+rlm/logger/
+├── __init__.py              # Package initialization
+├── README.md                # This file
+├── requirements.txt         # Logger dependencies
+├── root_logger.py           # Root logger with colorful output
+├── repl_logger.py           # REPL environment logger
+├── timescale_client.py      # TimescaleDB client for latency tracking
+├── doc/                     # Documentation
+│   ├── QUICKSTART_TIMESCALE.md
+│   └── TOKEN_CACHE_TRACKING.md
+├── examples/                # Usage examples
+│   ├── timescale_examples.py
+│   ├── token_cache_example.py
+│   └── rlm_integration.py
+└── sql/                     # Database schemas
+    └── timescale_schema.sql
+```
 
 When you run your code, you'll see something like this:
 
