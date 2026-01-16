@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Any
 
 from rlm import RLM
 from rlm.repl import REPLEnv
-from rlm.utils.llm import OpenAIClient
+from rlm.utils.llm import LLMClient
 from rlm.utils.prompts import DEFAULT_QUERY, next_action_prompt, build_system_prompt
 import rlm.utils.utils as utils
 
@@ -21,16 +21,21 @@ class RLM_REPL(RLM):
     
     def __init__(self, 
                  api_key: Optional[str] = None, 
-                 model: str = "gpt-5",
-                 recursive_model: str = "gpt-5",
+                 model: Optional[str] = None,
+                 base_url: Optional[str] = None,
+                 recursive_model: Optional[str] = None,
+                 recursive_base_url: Optional[str] = None,
                  max_iterations: int = 20,
                  depth: int = 0,
                  enable_logging: bool = False,
                  ):
+        import os
         self.api_key = api_key
-        self.model = model
-        self.recursive_model = recursive_model
-        self.llm = OpenAIClient(api_key, model) # Replace with other client
+        self.model = model or os.getenv("LLM_MODEL", "gpt-5")
+        self.base_url = base_url or os.getenv("LLM_BASE_URL")
+        self.recursive_model = recursive_model or os.getenv("LLM_RECURSIVE_MODEL", "gpt-5-mini")
+        self.recursive_base_url = recursive_base_url or os.getenv("LLM_RECURSIVE_BASE_URL") or os.getenv("LLM_BASE_URL")
+        self.llm = LLMClient(api_key, self.model, self.base_url) # Replace with other client
         
         # Track recursive call depth to prevent infinite loops
         self.repl_env = None
@@ -69,6 +74,8 @@ class RLM_REPL(RLM):
             context_json=context_data, 
             context_str=context_str, 
             recursive_model=self.recursive_model,
+            recursive_base_url=self.recursive_base_url,
+            recursive_api_key=self.api_key,
         )
         
         return self.messages

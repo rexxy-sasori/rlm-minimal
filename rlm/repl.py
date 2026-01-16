@@ -13,19 +13,18 @@ from rlm import RLM
 
 # Simple sub LM for REPL environment. Note: This could also be just the RLM itself!
 class Sub_RLM(RLM):
-    """Recursive LLM client for REPL environment with fixed configuration."""
+    """Recursive LLM client for REPL environment with flexible configuration."""
     
-    def __init__(self, model: str = "gpt-5"):
-        # Configuration - model can be specified
-        self.api_key = os.getenv("OPENAI_API_KEY")
+    def __init__(self, model: str = "gpt-5", base_url: Optional[str] = None, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
+            raise ValueError("LLM_API_KEY or OPENAI_API_KEY environment variable is required")
         
         self.model = model
+        self.base_url = base_url or os.getenv("LLM_BASE_URL") or os.getenv("LLM_RECURSIVE_BASE_URL")
 
-        # Initialize OpenAI client
-        from rlm.utils.llm import OpenAIClient
-        self.client = OpenAIClient(api_key=self.api_key, model=model)
+        from rlm.utils.llm import LLMClient
+        self.client = LLMClient(api_key=self.api_key, model=model, base_url=self.base_url)
         
     
     def completion(self, prompt) -> str:
@@ -72,6 +71,8 @@ class REPLEnv:
     def __init__(
         self,
         recursive_model: str = "gpt-5-mini",
+        recursive_base_url: Optional[str] = None,
+        recursive_api_key: Optional[str] = None,
         context_json: Optional[dict | list] = None,
         context_str: Optional[str] = None,
         setup_code: str = None,
@@ -82,9 +83,11 @@ class REPLEnv:
         # Create temporary directory (but don't change global working directory)
         self.temp_dir = tempfile.mkdtemp(prefix="repl_env_")
 
-
-        # Initialize minimal RLM / LM client. Change this to support more depths.
-        self.sub_rlm: RLM = Sub_RLM(model=recursive_model)
+        self.sub_rlm: RLM = Sub_RLM(
+            model=recursive_model,
+            base_url=recursive_base_url,
+            api_key=recursive_api_key
+        )
         
         # Create safe globals with only string-safe built-ins
         self.globals = {
