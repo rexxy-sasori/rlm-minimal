@@ -60,6 +60,21 @@ class OOLONGConfig(BenchmarkConfig):
     dataset_path: Optional[str] = "data/oolong.json"
     max_tasks: int = 50
     context_lengths: list = field(default_factory=lambda: [1000000, 5000000, 10000000])
+    
+    # Official OOLONG dataset configuration
+    use_official_oolong: bool = False
+    oolong_data_dir: str = "data/oolong"
+    oolong_dataset_split: str = "synth"  # synth or real
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary with OOLONG-specific fields."""
+        base_dict = super().to_dict()
+        base_dict.update({
+            "use_official_oolong": self.use_official_oolong,
+            "oolong_data_dir": self.oolong_data_dir,
+            "oolong_dataset_split": self.oolong_dataset_split,
+        })
+        return base_dict
 
 @dataclass  
 class DeepResearchConfig(BenchmarkConfig):

@@ -12,6 +12,36 @@ Based on the analysis of the RLM blog post (https://alexzhang13.github.io/blog/2
 - RLM was cheaper per query on average
 **Purpose:** Evaluates long-context reasoning capabilities with complex tasks
 
+#### Official OOLONG Setup Instructions
+**Official Repository:** [abertsch72/oolong](https://github.com/abertsch72/oolong)
+
+**Setup Steps:**
+1. **Automatic Setup:**
+   ```bash
+   python scripts/setup_oolong.py --data-dir data/oolong
+   ```
+
+2. **Manual Setup:**
+   - Clone the repository: `git clone https://github.com/abertsch72/oolong.git data/oolong/oolong`
+   - Install dependencies: `pip install -r data/oolong/oolong/requirements.txt`
+
+3. **Configuration Options:**
+   ```python
+   config = {
+       "use_official_oolong": True,         # Enable official OOLONG
+       "oolong_data_dir": "data/oolong",     # OOLONG storage directory
+       "oolong_dataset_split": "synth",      # Dataset split (synth or real)
+       "max_tasks": 50                       # Number of tasks to evaluate
+   }
+   ```
+
+4. **Running OOLONG:**
+   The official OOLONG repository also provides its own evaluation scripts:
+   ```bash
+   # From the OOLONG repository directory
+   python src/eval/eval_script_batched.py --model [modelname] --dataset [synth or real]
+   ```
+
 ### 2. Deep Research Task (BrowseComp-Plus)
 **Type:** Deep Research / Agentic Browsing Benchmark
 **Description:** New long-context Deep Research task constructed from BrowseComp-Plus
