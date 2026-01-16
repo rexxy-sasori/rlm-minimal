@@ -56,10 +56,10 @@ fi
 # With TimescaleDB logging:
 # docker run \
 #   -e OPENAI_API_KEY="sk-xxx" \
-#   -e TIMESCALE_DB_HOST="timescaledb" \
+#   -e TIMESCALE_DB_HOST="localhost" \
 #   -e TIMESCALE_DB_PORT="5432" \
 #   -e TIMESCALE_DB_NAME="rlm_logs" \
 #   -e TIMESCALE_DB_USER="postgres" \
 #   -e TIMESCALE_DB_PASSWORD="password" \
-#   --network=your-network \
+#   --network=host \
 #   rlm-minimal
