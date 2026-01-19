@@ -26,13 +26,18 @@ class LatencyRecord:
     """Data class for latency records."""
     query_id: str
     run_id: datetime
+    recursion_id: str
+    parent_recursion_id: Optional[str] = None
     event_type: str
     event_subtype: Optional[str] = None
     duration_ms: Optional[float] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     iteration: Optional[int] = None
-    depth: Optional[int] = None
+    current_depth: Optional[int] = None
+    max_depth: Optional[int] = None
+    model: Optional[str] = None
+    model_index: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
     success: bool = True
     error_message: Optional[str] = None
@@ -46,8 +51,13 @@ class LLMInteractionRecord:
     """Data class for LLM interaction records."""
     query_id: str
     run_id: datetime
+    recursion_id: str
+    parent_recursion_id: Optional[str] = None
     model: str
+    model_index: Optional[int] = None
     model_type: Optional[str] = None
+    current_depth: Optional[int] = None
+    max_depth: Optional[int] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
@@ -67,6 +77,7 @@ class LLMInteractionRecord:
     context_messages: Optional[int] = None
     context_tokens: Optional[int] = None
     response_length: Optional[int] = None
+    iteration: Optional[int] = None
     has_tool_calls: Optional[bool] = None
     tool_call_count: Optional[int] = None
     success: bool = True
@@ -80,14 +91,20 @@ class CodeExecutionRecord:
     """Data class for code execution records."""
     query_id: str
     run_id: datetime
+    recursion_id: str
+    parent_recursion_id: Optional[str] = None
     execution_number: int
     code: str
+    current_depth: Optional[int] = None
+    max_depth: Optional[int] = None
+    model: Optional[str] = None
     stdout: Optional[str] = None
     stderr: Optional[str] = None
     output_length: Optional[int] = None
     duration_ms: Optional[float] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    iteration: Optional[int] = None
     success: bool = True
     error_message: Optional[str] = None
     error_type: Optional[str] = None
@@ -114,6 +131,11 @@ class TimescaleDBClient:
         self._current_run_id: Optional[datetime] = None
         self._current_iteration: Optional[int] = None
         self._current_depth: Optional[int] = None
+        self._current_max_depth: Optional[int] = None
+        self._current_recursion_id: Optional[str] = None
+        self._current_parent_recursion_id: Optional[str] = None
+        self._current_model: Optional[str] = None
+        self._current_model_index: Optional[int] = None
 
         self._init_pool()
 
@@ -132,7 +154,10 @@ class TimescaleDBClient:
             raise
 
     def set_context(self, query_id: Optional[str] = None, run_id: Optional[datetime] = None,
-                   iteration: Optional[int] = None, depth: Optional[int] = None):
+                   iteration: Optional[int] = None, current_depth: Optional[int] = None,
+                   max_depth: Optional[int] = None, recursion_id: Optional[str] = None,
+                   parent_recursion_id: Optional[str] = None, model: Optional[str] = None,
+                   model_index: Optional[int] = None):
         """
         Set current logging context.
 
@@ -140,7 +165,12 @@ class TimescaleDBClient:
             query_id: Query identifier from benchmark dataset
             run_id: Run identifier (timestamp from main script)
             iteration: Current conversation iteration
-            depth: Current recursion depth
+            current_depth: Current recursion depth (0 = root)
+            max_depth: Maximum allowed recursion depth
+            recursion_id: Unique ID for this recursive call
+            parent_recursion_id: Parent recursion ID (for tree structure)
+            model: Model used at this depth
+            model_index: Index in recursive_models list
         """
         if query_id is not None:
             self._current_query_id = query_id
@@ -148,8 +178,59 @@ class TimescaleDBClient:
             self._current_run_id = run_id
         if iteration is not None:
             self._current_iteration = iteration
-        if depth is not None:
-            self._current_depth = depth
+        if current_depth is not None:
+            self._current_depth = current_depth
+        if max_depth is not None:
+            self._current_max_depth = max_depth
+        if recursion_id is not None:
+            self._current_recursion_id = recursion_id
+        if parent_recursion_id is not None:
+            self._current_parent_recursion_id = parent_recursion_id
+        if model is not None:
+            self._current_model = model
+        if model_index is not None:
+            self._current_model_index = model_index
+    
+    def generate_recursion_id(self, current_depth: int) -> str:
+        """
+        Generate a unique recursion ID.
+        
+        Args:
+            current_depth: Current recursion depth
+            
+        Returns:
+            Unique recursion ID string
+        """
+        return f"rec_{current_depth}_{uuid.uuid4().hex[:8]}"
+    
+    def enter_recursive_call(self, current_depth: int, max_depth: int, 
+                            model: str, model_index: Optional[int] = None) -> str:
+        """
+        Enter a recursive call context.
+        Saves current recursion ID as parent and generates new recursion ID.
+        
+        Args:
+            current_depth: Current recursion depth
+            max_depth: Maximum allowed depth
+            model: Model used at this depth
+            model_index: Index in recursive_models list
+            
+        Returns:
+            New recursion ID
+        """
+        parent_recursion_id = self._current_recursion_id
+        new_recursion_id = self.generate_recursion_id(current_depth)
+        
+        self.set_context(
+            current_depth=current_depth,
+            max_depth=max_depth,
+            recursion_id=new_recursion_id,
+            parent_recursion_id=parent_recursion_id,
+            model=model,
+            model_index=model_index
+        )
+        
+        return new_recursion_id
 
     def get_connection(self):
         """Get a connection from the pool."""
@@ -214,16 +295,20 @@ class TimescaleDBClient:
             record.end_time = datetime.now(timezone.utc)
         if not record.duration_ms:
             record.duration_ms = (record.end_time - record.start_time).total_seconds() * 1000
+        if not record.recursion_id:
+            record.recursion_id = self._current_recursion_id or self.generate_recursion_id(record.current_depth or 0)
 
         query = """
             INSERT INTO latency_events (
-                time, query_id, run_id, event_type, event_subtype,
-                duration_ms, start_time, end_time, iteration, depth,
+                time, query_id, run_id, recursion_id, parent_recursion_id,
+                event_type, event_subtype, duration_ms, start_time, end_time,
+                iteration, current_depth, max_depth, model, model_index,
                 metadata, success, error_message, error_type,
                 source_component, source_function
             ) VALUES (
-                %(time)s, %(query_id)s, %(run_id)s, %(event_type)s, %(event_subtype)s,
-                %(duration_ms)s, %(start_time)s, %(end_time)s, %(iteration)s, %(depth)s,
+                %(time)s, %(query_id)s, %(run_id)s, %(recursion_id)s, %(parent_recursion_id)s,
+                %(event_type)s, %(event_subtype)s, %(duration_ms)s, %(start_time)s, %(end_time)s,
+                %(iteration)s, %(current_depth)s, %(max_depth)s, %(model)s, %(model_index)s,
                 %(metadata)s, %(success)s, %(error_message)s, %(error_type)s,
                 %(source_component)s, %(source_function)s
             ) RETURNING event_id
@@ -233,13 +318,18 @@ class TimescaleDBClient:
             'time': datetime.now(timezone.utc),
             'query_id': record.query_id or self._current_query_id,
             'run_id': record.run_id or self._current_run_id,
+            'recursion_id': record.recursion_id,
+            'parent_recursion_id': record.parent_recursion_id or self._current_parent_recursion_id,
             'event_type': record.event_type,
             'event_subtype': record.event_subtype,
             'duration_ms': record.duration_ms,
             'start_time': record.start_time,
             'end_time': record.end_time,
             'iteration': record.iteration or self._current_iteration,
-            'depth': record.depth or self._current_depth,
+            'current_depth': record.current_depth or self._current_depth,
+            'max_depth': record.max_depth or self._current_max_depth,
+            'model': record.model or self._current_model,
+            'model_index': record.model_index or self._current_model_index,
             'metadata': json.dumps(record.metadata) if record.metadata else None,
             'success': record.success,
             'error_message': record.error_message,
@@ -262,6 +352,8 @@ class TimescaleDBClient:
             record.end_time = datetime.now(timezone.utc)
         if not record.duration_ms:
             record.duration_ms = (record.end_time - record.start_time).total_seconds() * 1000
+        if not record.recursion_id:
+            record.recursion_id = self._current_recursion_id or self.generate_recursion_id(record.current_depth or 0)
         
         # Calculate uncached tokens if not provided
         if record.uncached_prompt_tokens is None and record.prompt_tokens is not None:
@@ -276,21 +368,23 @@ class TimescaleDBClient:
 
         query = """
             INSERT INTO llm_interactions (
-                time, query_id, run_id, model, model_type,
+                time, query_id, run_id, recursion_id, parent_recursion_id,
+                model, model_index, model_type, current_depth, max_depth,
                 prompt_tokens, completion_tokens, total_tokens,
                 cached_tokens, uncached_prompt_tokens,
                 prompt_token_price, completion_token_price, total_cost,
                 duration_ms, start_time, end_time,
-                context_messages, context_tokens, response_length,
+                context_messages, context_tokens, response_length, iteration,
                 has_tool_calls, tool_call_count, success,
                 error_message, error_type, metadata
             ) VALUES (
-                %(time)s, %(query_id)s, %(run_id)s, %(model)s, %(model_type)s,
+                %(time)s, %(query_id)s, %(run_id)s, %(recursion_id)s, %(parent_recursion_id)s,
+                %(model)s, %(model_index)s, %(model_type)s, %(current_depth)s, %(max_depth)s,
                 %(prompt_tokens)s, %(completion_tokens)s, %(total_tokens)s,
                 %(cached_tokens)s, %(uncached_prompt_tokens)s,
                 %(prompt_token_price)s, %(completion_token_price)s, %(total_cost)s,
                 %(duration_ms)s, %(start_time)s, %(end_time)s,
-                %(context_messages)s, %(context_tokens)s, %(response_length)s,
+                %(context_messages)s, %(context_tokens)s, %(response_length)s, %(iteration)s,
                 %(has_tool_calls)s, %(tool_call_count)s, %(success)s,
                 %(error_message)s, %(error_type)s, %(metadata)s
             ) RETURNING interaction_id
@@ -300,8 +394,13 @@ class TimescaleDBClient:
             'time': datetime.now(timezone.utc),
             'query_id': record.query_id or self._current_query_id,
             'run_id': record.run_id or self._current_run_id,
+            'recursion_id': record.recursion_id,
+            'parent_recursion_id': record.parent_recursion_id or self._current_parent_recursion_id,
             'model': record.model,
+            'model_index': record.model_index or self._current_model_index,
             'model_type': record.model_type,
+            'current_depth': record.current_depth or self._current_depth,
+            'max_depth': record.max_depth or self._current_max_depth,
             'prompt_tokens': record.prompt_tokens,
             'completion_tokens': record.completion_tokens,
             'total_tokens': record.total_tokens,
@@ -316,6 +415,7 @@ class TimescaleDBClient:
             'context_messages': record.context_messages,
             'context_tokens': record.context_tokens,
             'response_length': record.response_length,
+            'iteration': record.iteration or self._current_iteration,
             'has_tool_calls': record.has_tool_calls,
             'tool_call_count': record.tool_call_count,
             'success': record.success,
@@ -524,13 +624,18 @@ class TimescaleDBClient:
             record = LatencyRecord(
                 query_id=self._current_query_id or 'unknown',
                 run_id=self._current_run_id or datetime.now(timezone.utc),
+                recursion_id=self._current_recursion_id or self.generate_recursion_id(self._current_depth or 0),
+                parent_recursion_id=self._current_parent_recursion_id,
                 event_type=event_type,
                 event_subtype=event_subtype,
                 duration_ms=duration_ms,
                 start_time=start_time,
                 end_time=end_time,
                 iteration=self._current_iteration,
-                depth=self._current_depth,
+                current_depth=self._current_depth,
+                max_depth=self._current_max_depth,
+                model=self._current_model,
+                model_index=self._current_model_index,
                 metadata=metadata,
                 success=success,
                 error_message=error_message,

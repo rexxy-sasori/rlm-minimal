@@ -13,6 +13,10 @@ CREATE TABLE latency_events (
     query_id TEXT NOT NULL,
     run_id TIMESTAMPTZ NOT NULL,
     
+    -- Recursion tracking
+    recursion_id TEXT NOT NULL, -- Unique ID for this recursive call
+    parent_recursion_id TEXT, -- Parent recursion ID for tree structure
+    
     -- Event classification
     event_type TEXT NOT NULL, -- 'llm_interaction', 'code_execution', 'tool_call', 'processing'
     event_subtype TEXT, -- More specific type: 'root_llm', 'recursive_llm', 'python_execution', etc.
@@ -24,7 +28,12 @@ CREATE TABLE latency_events (
     
     -- Context
     iteration INTEGER, -- Conversation step/iteration
-    depth INTEGER, -- Recursion depth
+    current_depth INTEGER, -- Current recursion depth (0 = root)
+    max_depth INTEGER, -- Maximum allowed recursion depth
+    
+    -- Model information
+    model TEXT, -- Model used at this depth
+    model_index INTEGER, -- Index in recursive_models list
     
     -- Event-specific metadata
     metadata JSONB,
@@ -58,6 +67,12 @@ CREATE INDEX idx_latency_query_run ON latency_events (query_id, run_id, time DES
 CREATE INDEX idx_latency_query_event ON latency_events (query_id, event_type, time DESC);
 CREATE INDEX idx_latency_run_event ON latency_events (run_id, event_type, time DESC);
 
+-- Recursion tracking indexes
+CREATE INDEX idx_latency_recursion ON latency_events (recursion_id, parent_recursion_id, time DESC);
+CREATE INDEX idx_latency_parent_recursion ON latency_events (parent_recursion_id, time DESC);
+CREATE INDEX idx_latency_depth ON latency_events (current_depth, max_depth, time DESC);
+CREATE INDEX idx_latency_model_depth ON latency_events (model, current_depth, time DESC);
+
 -- LLM interactions table (detailed)
 CREATE TABLE llm_interactions (
     time TIMESTAMPTZ NOT NULL,
@@ -66,9 +81,18 @@ CREATE TABLE llm_interactions (
     query_id TEXT NOT NULL,
     run_id TIMESTAMPTZ NOT NULL,
     
+    -- Recursion tracking
+    recursion_id TEXT NOT NULL, -- Unique ID for this recursive call
+    parent_recursion_id TEXT, -- Parent recursion ID for tree structure
+    
     -- LLM details
     model TEXT NOT NULL,
-    model_type TEXT, -- 'root', 'recursive'
+    model_index INTEGER, -- Index in recursive_models list
+    model_type TEXT, -- 'root', 'recursive', 'sub_rlm'
+    
+    -- Depth information
+    current_depth INTEGER, -- Current recursion depth (0 = root)
+    max_depth INTEGER, -- Maximum allowed recursion depth
     
     -- Token counts
     prompt_tokens INTEGER,
@@ -95,6 +119,7 @@ CREATE TABLE llm_interactions (
     
     -- Response details
     response_length INTEGER,
+    iteration INTEGER, -- Conversation iteration at this depth
     has_tool_calls BOOLEAN,
     tool_call_count INTEGER,
     
@@ -123,6 +148,13 @@ CREATE INDEX idx_llm_cached_tokens ON llm_interactions (cached_tokens DESC, time
 CREATE INDEX idx_llm_total_tokens ON llm_interactions (total_tokens DESC, time DESC);
 CREATE INDEX idx_llm_total_cost ON llm_interactions (total_cost DESC, time DESC);
 
+-- Recursion tracking indexes
+CREATE INDEX idx_llm_recursion ON llm_interactions (recursion_id, parent_recursion_id, time DESC);
+CREATE INDEX idx_llm_parent_recursion ON llm_interactions (parent_recursion_id, time DESC);
+CREATE INDEX idx_llm_depth ON llm_interactions (current_depth, max_depth, time DESC);
+CREATE INDEX idx_llm_model_depth ON llm_interactions (model, current_depth, time DESC);
+CREATE INDEX idx_llm_model_index ON llm_interactions (model_index, current_depth, time DESC);
+
 -- Code executions table (detailed)
 CREATE TABLE code_executions (
     time TIMESTAMPTZ NOT NULL,
@@ -131,10 +163,19 @@ CREATE TABLE code_executions (
     query_id TEXT NOT NULL,
     run_id TIMESTAMPTZ NOT NULL,
     
+    -- Recursion tracking
+    recursion_id TEXT NOT NULL, -- Unique ID for this recursive call
+    parent_recursion_id TEXT, -- Parent recursion ID for tree structure
+    
     -- Execution details
     execution_number INTEGER NOT NULL,
     code TEXT NOT NULL,
     code_hash TEXT, -- For deduplication
+    
+    -- Depth information
+    current_depth INTEGER, -- Current recursion depth (0 = root)
+    max_depth INTEGER, -- Maximum allowed recursion depth
+    model TEXT, -- Model used at this depth
     
     -- Output
     stdout TEXT,
@@ -145,6 +186,9 @@ CREATE TABLE code_executions (
     duration_ms DOUBLE PRECISION NOT NULL,
     start_time TIMESTAMPTZ NOT NULL,
     end_time TIMESTAMPTZ NOT NULL,
+    
+    -- Context
+    iteration INTEGER, -- Conversation iteration at this depth
     
     -- Status
     success BOOLEAN NOT NULL,
@@ -165,6 +209,12 @@ CREATE INDEX idx_code_execution_number ON code_executions (execution_number, tim
 CREATE INDEX idx_code_duration ON code_executions (duration_ms DESC, time DESC);
 CREATE INDEX idx_code_success ON code_executions (success, time DESC);
 CREATE INDEX idx_code_code_hash ON code_executions (code_hash);
+
+-- Recursion tracking indexes
+CREATE INDEX idx_code_recursion ON code_executions (recursion_id, parent_recursion_id, time DESC);
+CREATE INDEX idx_code_parent_recursion ON code_executions (parent_recursion_id, time DESC);
+CREATE INDEX idx_code_depth ON code_executions (current_depth, max_depth, time DESC);
+CREATE INDEX idx_code_model_depth ON code_executions (model, current_depth, time DESC);
 
 -- Query run summary table (for aggregation)
 CREATE TABLE query_run_summaries (

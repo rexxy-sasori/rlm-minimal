@@ -31,10 +31,11 @@ class RLM_REPL_With_Timescale(RLM):
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         base_url: Optional[str] = None,
-        recursive_model: Optional[str] = None,
-        recursive_base_url: Optional[str] = None,
+        recursive_models: Optional[List[str]] = None,
+        recursive_base_urls: Optional[List[str]] = None,
         max_iterations: int = 20,
-        depth: int = 0,
+        max_depth: int = 1,
+        current_depth: int = 0,
         enable_logging: bool = False,
         enable_timescale: bool = True,
         timescale_db_url: Optional[str] = None
@@ -43,12 +44,18 @@ class RLM_REPL_With_Timescale(RLM):
         self.api_key = api_key
         self.model = model or os.getenv("LLM_MODEL", "gpt-5")
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
-        self.recursive_model = recursive_model or os.getenv("LLM_RECURSIVE_MODEL", "gpt-5-mini")
-        self.recursive_base_url = recursive_base_url or os.getenv("LLM_RECURSIVE_BASE_URL") or os.getenv("LLM_BASE_URL")
+        
+        default_recursive_model = os.getenv("LLM_RECURSIVE_MODEL", "gpt-5-mini")
+        default_recursive_base_url = os.getenv("LLM_RECURSIVE_BASE_URL") or os.getenv("LLM_BASE_URL")
+        
+        self.recursive_models = recursive_models or [default_recursive_model]
+        self.recursive_base_urls = recursive_base_urls or ([default_recursive_base_url] if default_recursive_base_url else [])
+        
         self.llm = LLMClient(api_key, self.model, self.base_url)
 
         self.repl_env = None
-        self.depth = depth
+        self.max_depth = max_depth
+        self.current_depth = current_depth
         self._max_iterations = max_iterations
 
         # Traditional loggers
@@ -90,13 +97,19 @@ class RLM_REPL_With_Timescale(RLM):
         self.current_query_id = query_id or f"query_{datetime.now(timezone.utc).timestamp()}"
         self.current_run_id = datetime.now(timezone.utc)
 
-        # Initialize TimescaleDB tracking
+        # Initialize TimescaleDB tracking with recursion context
         if self.timescale_client:
+            recursion_id = self.timescale_client.generate_recursion_id(self.current_depth)
             self.timescale_client.set_context(
                 query_id=self.current_query_id,
                 run_id=self.current_run_id,
                 iteration=0,
-                depth=self.depth
+                current_depth=self.current_depth,
+                max_depth=self.max_depth,
+                recursion_id=recursion_id,
+                parent_recursion_id=None,
+                model=self.model,
+                model_index=None
             )
             self.timescale_client.initialize_query_run(
                 self.current_query_id,
