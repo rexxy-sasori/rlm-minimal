@@ -76,18 +76,30 @@ class REPLEnv:
         context_json: Optional[dict | list] = None,
         context_str: Optional[str] = None,
         setup_code: str = None,
+        depth: int = 1,
     ):
         # Store the original working directory
         self.original_cwd = os.getcwd()
         
         # Create temporary directory (but don't change global working directory)
         self.temp_dir = tempfile.mkdtemp(prefix="repl_env_")
+        self.depth = depth
 
-        self.sub_rlm: RLM = Sub_RLM(
-            model=recursive_model,
-            base_url=recursive_base_url,
-            api_key=recursive_api_key
-        )
+        if depth > 1:
+            from rlm.rlm_repl import RLM_REPL
+            self.sub_rlm: RLM = RLM_REPL(
+                api_key=recursive_api_key,
+                model=recursive_model,
+                base_url=recursive_base_url,
+                depth=depth - 1,
+                enable_logging=False
+            )
+        else:
+            self.sub_rlm: RLM = Sub_RLM(
+                model=recursive_model,
+                base_url=recursive_base_url,
+                api_key=recursive_api_key
+            )
         
         # Create safe globals with only string-safe built-ins
         self.globals = {
