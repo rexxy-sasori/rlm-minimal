@@ -70,9 +70,9 @@ class REPLResult:
 class REPLEnv:
     def __init__(
         self,
-        recursive_model: str = "gpt-5-mini",
-        recursive_base_url: Optional[str] = None,
-        recursive_api_key: Optional[str] = None,
+        recursive_models: Optional[List[str]] = None,
+        recursive_base_urls: Optional[List[str]] = None,
+        api_key: Optional[str] = None,
         context_json: Optional[dict | list] = None,
         context_str: Optional[str] = None,
         setup_code: str = None,
@@ -84,21 +84,41 @@ class REPLEnv:
         # Create temporary directory (but don't change global working directory)
         self.temp_dir = tempfile.mkdtemp(prefix="repl_env_")
         self.depth = depth
+        
+        # Default models if not provided
+        default_models = recursive_models or ["gpt-5-mini"]
+        default_base_urls = recursive_base_urls or []
+        
+        # Get model for current depth level
+        if depth <= len(default_models):
+            current_model = default_models[depth - 1]
+        else:
+            current_model = default_models[-1]
+        
+        # Get base URL for current depth level
+        if depth <= len(default_base_urls):
+            current_base_url = default_base_urls[depth - 1]
+        else:
+            current_base_url = default_base_urls[-1] if default_base_urls else None
+        
+        # Prepare models for next depth level
+        next_depth_models = default_models[1:] if len(default_models) > 1 else default_models
+        next_depth_base_urls = default_base_urls[1:] if len(default_base_urls) > 1 else default_base_urls
 
         if depth > 1:
             from rlm.rlm_repl import RLM_REPL
             self.sub_rlm: RLM = RLM_REPL(
-                api_key=recursive_api_key,
-                model=recursive_model,
-                base_url=recursive_base_url,
+                api_key=api_key,
+                recursive_models=next_depth_models,
+                recursive_base_urls=next_depth_base_urls,
                 depth=depth - 1,
                 enable_logging=False
             )
         else:
             self.sub_rlm: RLM = Sub_RLM(
-                model=recursive_model,
-                base_url=recursive_base_url,
-                api_key=recursive_api_key
+                model=current_model,
+                base_url=current_base_url,
+                api_key=api_key
             )
         
         # Create safe globals with only string-safe built-ins

@@ -96,11 +96,18 @@ RLM_REPL(depth=3) → creates RLM_REPL(depth=2)
 
 ## Usage Examples
 
+### Basic Usage (Backward Compatible)
+
 ```python
 # Default behavior (backward compatible)
 rlm = RLM_REPL()
 # Uses Sub_RLM for sub-calls, max depth=1
+# Default recursive model: gpt-5-mini
+```
 
+### Configurable Depth
+
+```python
 # Enable 2 layers of recursion
 rlm = RLM_REPL(depth=2)
 # Uses RLM_REPL for sub-calls, which then uses Sub_RLM
@@ -112,6 +119,80 @@ rlm = RLM_REPL(depth=3)
 # Which uses Sub_RLM
 ```
 
+### Per-Depth Model Configuration
+
+Use `recursive_models` list to specify different models for each depth level:
+
+```python
+# Different models at different depths
+rlm = RLM_REPL(
+    depth=3,
+    recursive_models=["gpt-5-mini", "gpt-4o-mini", "llama-3.1-8b"]
+)
+# Depth 1: gpt-5-mini
+# Depth 2: gpt-4o-mini
+# Depth 3: llama-3.1-8b
+```
+
+```python
+# Mix cloud and local models
+rlm = RLM_REPL(
+    depth=3,
+    recursive_models=["gpt-5-mini", "llama-3.1-70b", "llama-3.1-8b"],
+    recursive_base_urls=[
+        "https://api.openai.com/v1",  # Cloud for depth 1
+        "http://localhost:1234/v1",    # Local for depth 2
+        "http://localhost:1234/v1"     # Local for depth 3
+    ]
+)
+```
+
+```python
+# Fewer models than depth levels (repeats last model)
+rlm = RLM_REPL(
+    depth=5,
+    recursive_models=["gpt-5-mini", "gpt-4o-mini"]
+)
+# Depth 1: gpt-5-mini
+# Depth 2: gpt-4o-mini
+# Depth 3: gpt-4o-mini  # Repeats last
+# Depth 4: gpt-4o-mini  # Repeats last
+# Depth 5: gpt-4o-mini  # Repeats last
+```
+
+## Per-Depth Model Configuration
+
+The implementation now supports **different models at different recursion depths** using list parameters:
+
+### Key Features
+
+1. **`recursive_models`**: List of model names for each depth level
+   - Index 0 = Depth 1 (first recursive call)
+   - Index 1 = Depth 2 (second recursive call)
+   - Index 2 = Depth 3 (third recursive call)
+   - etc.
+
+2. **`recursive_base_urls`**: List of base URLs for each depth level (optional)
+   - Same indexing as recursive_models
+   - Allows mixing cloud and local models
+
+3. **Fallback Behavior**:
+   - If fewer models specified than depth levels, repeats the last model
+   - If no base URL specified for a depth, uses the previous one or None
+
+### How It Works
+
+When creating sub-RLMs at each depth level:
+
+```
+Root RLM_REPL(depth=3, recursive_models=[A, B, C])
+  └─> Creates RLM_REPL(depth=2, recursive_models=[B, C])
+       └─> Creates RLM_REPL(depth=1, recursive_models=[C])
+            └─> Creates Sub_RLM(model=C)  # Base case
+```
+
+The models list is "shifted" at each level, so depth N uses models[N-1].
+
 ## Backward Compatibility
 
 ✅ **FULLY MAINTAINED**
@@ -120,6 +201,8 @@ rlm = RLM_REPL(depth=3)
 - Existing code without depth parameter works unchanged
 - No breaking changes to API
 - Behavior is identical when depth=1
+- Old `recursive_model` parameter is replaced with `recursive_models` list
+- Default value: `["gpt-5-mini"]` (maintains backward compatibility)
 
 ## Testing
 
