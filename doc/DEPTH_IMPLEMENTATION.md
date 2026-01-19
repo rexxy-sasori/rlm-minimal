@@ -211,15 +211,16 @@ The implementation supports **different models at different recursion depths** u
 
 ```
 Root RLM_REPL(model='gpt-5', current_depth=0, max_depth=3, models=[A, B, C])
-  └─> Creates RLM_REPL(model=B, current_depth=1, max_depth=3, models=[A, B, C])
-       └─> Creates RLM_REPL(model=C, current_depth=2, max_depth=3, models=[A, B, C])
+  └─> Creates RLM_REPL(model=A, current_depth=1, max_depth=3, models=[A, B, C])
+       └─> Creates RLM_REPL(model=B, current_depth=2, max_depth=3, models=[A, B, C])
             └─> Creates Sub_RLM(model=C)  # Base case
 ```
 
 **Key Points:**
 - Root RLM_REPL uses its own `model` parameter (default: 'gpt-5')
-- RLM_REPL at level N uses `models[N]` as its root model
-- This creates a cascade: each level uses the next model in the list
+- RLM_REPL at level N uses `models[N-1]` as its root model
+- Level 1 uses models[0], Level 2 uses models[1], etc.
+- This ensures ALL models in the list are used
 - Base case (Sub_RLM) uses `models[current_depth]`
 
 ## Backward Compatibility
