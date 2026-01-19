@@ -57,32 +57,6 @@ class RLM_REPL(RLM):
         self.messages = [] # Initialize messages list
         self.query = None
     
-    def get_recursive_model_for_depth(self, depth_level: int) -> str:
-        """Get the model for a specific recursive depth level.
-        
-        Args:
-            depth_level: The depth level (1-based index for recursive calls)
-            
-        Returns:
-            The model name for that depth level
-        """
-        if depth_level <= len(self.recursive_models):
-            return self.recursive_models[depth_level - 1]
-        return self.recursive_models[-1]
-    
-    def get_recursive_base_url_for_depth(self, depth_level: int) -> Optional[str]:
-        """Get the base URL for a specific recursive depth level.
-        
-        Args:
-            depth_level: The depth level (1-based index for recursive calls)
-            
-        Returns:
-            The base URL for that depth level, or None if not configured
-        """
-        if depth_level <= len(self.recursive_base_urls):
-            return self.recursive_base_urls[depth_level - 1]
-        return self.recursive_base_urls[-1] if self.recursive_base_urls else None
-    
     def setup_context(self, context: List[str] | str | List[Dict[str, str]], query: Optional[str] = None):
         """
         Setup the context for the RLMClient.
