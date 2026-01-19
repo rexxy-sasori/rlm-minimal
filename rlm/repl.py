@@ -110,12 +110,27 @@ class REPLEnv:
 
         if should_recurse:
             from rlm.rlm_repl import RLM_REPL
+            # Get model for the next level (this will be the root model for the nested RLM_REPL)
+            next_depth = current_depth + 1
+            if next_depth < len(default_models):
+                next_model = default_models[next_depth]
+            else:
+                next_model = default_models[-1]
+            
+            # Get base URL for the next level
+            if next_depth < len(default_base_urls):
+                next_base_url = default_base_urls[next_depth]
+            else:
+                next_base_url = default_base_urls[-1] if default_base_urls else None
+            
             self.sub_rlm: RLM = RLM_REPL(
                 api_key=api_key,
+                model=next_model,  # Use the next model as the root model for nested RLM
+                base_url=next_base_url,
                 recursive_models=default_models,
                 recursive_base_urls=default_base_urls,
                 max_depth=max_depth,
-                current_depth=current_depth + 1,
+                current_depth=next_depth,
                 enable_logging=False
             )
         else:
