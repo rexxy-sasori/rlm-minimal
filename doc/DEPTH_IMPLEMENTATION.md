@@ -108,15 +108,16 @@ rlm = RLM_REPL()
 ### Configurable Depth
 
 ```python
-# Enable 2 layers of recursion
-rlm = RLM_REPL(depth=2)
-# Uses RLM_REPL for sub-calls, which then uses Sub_RLM
+# Enable 1 layer of recursion (max_depth=2)
+rlm = RLM_REPL(max_depth=2)
+# Root creates RLM_REPL(current_depth=1)
+# Which creates Sub_RLM (base case)
 
-# Enable 3 layers of recursion
-rlm = RLM_REPL(depth=3)
-# Uses RLM_REPL(depth=2) for sub-calls
-# Which uses RLM_REPL(depth=1) for its sub-calls
-# Which uses Sub_RLM
+# Enable 2 layers of recursion (max_depth=3)
+rlm = RLM_REPL(max_depth=3)
+# Root creates RLM_REPL(current_depth=1)
+# Which creates RLM_REPL(current_depth=2)
+# Which creates Sub_RLM (base case)
 ```
 
 ### Per-Depth Model Configuration
@@ -160,16 +161,42 @@ rlm = RLM_REPL(
 # Depth 5: gpt-4o-mini  # Repeats last
 ```
 
+## Depth Numbering (0-based Root)
+
+The implementation uses **0-based numbering** where:
+
+- **`current_depth`**: Current depth level in the recursion
+  - `current_depth = 0`: Root RLM (top level)
+  - `current_depth = 1`: First recursive call
+  - `current_depth = 2`: Second recursive call
+  - etc.
+
+- **`max_depth`**: Maximum number of recursive layers allowed
+  - `max_depth = 1`: No recursion (default)
+  - `max_depth = 2`: One layer of recursion
+  - `max_depth = 3`: Two layers of recursion
+  - etc.
+
+### Recursion Logic
+
+Recursion continues when:
+```python
+should_recurse = (current_depth + 1) < max_depth
+```
+
+- If `True`: Create another `RLM_REPL` with `current_depth + 1`
+- If `False`: Create `Sub_RLM` (base case, recursion stops)
+
 ## Per-Depth Model Configuration
 
-The implementation now supports **different models at different recursion depths** using list parameters:
+The implementation supports **different models at different recursion depths** using list parameters:
 
 ### Key Features
 
 1. **`recursive_models`**: List of model names for each depth level
-   - Index 0 = Depth 1 (first recursive call)
-   - Index 1 = Depth 2 (second recursive call)
-   - Index 2 = Depth 3 (third recursive call)
+   - Index 0 = Used when `current_depth = 0` (root's recursive calls)
+   - Index 1 = Used when `current_depth = 1` (first recursive call)
+   - Index 2 = Used when `current_depth = 2` (second recursive call)
    - etc.
 
 2. **`recursive_base_urls`**: List of base URLs for each depth level (optional)
@@ -177,21 +204,19 @@ The implementation now supports **different models at different recursion depths
    - Allows mixing cloud and local models
 
 3. **Fallback Behavior**:
-   - If fewer models specified than depth levels, repeats the last model
+   - If fewer models specified than `max_depth`, repeats the last model
    - If no base URL specified for a depth, uses the previous one or None
 
 ### How It Works
 
-When creating sub-RLMs at each depth level:
-
 ```
-Root RLM_REPL(depth=3, recursive_models=[A, B, C])
-  └─> Creates RLM_REPL(depth=2, recursive_models=[B, C])
-       └─> Creates RLM_REPL(depth=1, recursive_models=[C])
-            └─> Creates Sub_RLM(model=C)  # Base case
+Root RLM_REPL(current_depth=0, max_depth=3, models=[A, B, C])
+  └─> Creates RLM_REPL(current_depth=1, max_depth=3, models=[A, B, C])
+       └─> Creates RLM_REPL(current_depth=2, max_depth=3, models=[A, B, C])
+            └─> Creates Sub_RLM(model=C)  # Base case (current_depth=2 uses models[2])
 ```
 
-The models list is "shifted" at each level, so depth N uses models[N-1].
+Each depth level uses `models[current_depth]`.
 
 ## Backward Compatibility
 

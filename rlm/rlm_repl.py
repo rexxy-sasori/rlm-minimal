@@ -26,7 +26,8 @@ class RLM_REPL(RLM):
                  recursive_models: Optional[List[str]] = None,
                  recursive_base_urls: Optional[List[str]] = None,
                  max_iterations: int = 20,
-                 depth: int = 1,
+                 max_depth: int = 1,
+                 current_depth: int = 0,
                  enable_logging: bool = False,
                  ):
         import os
@@ -45,7 +46,8 @@ class RLM_REPL(RLM):
         
         # Track recursive call depth to prevent infinite loops
         self.repl_env = None
-        self.depth = depth  # 1 = single layer of sub-calls, 2 = two layers, etc.
+        self.max_depth = max_depth  # Maximum recursion depth allowed
+        self.current_depth = current_depth  # Current depth level (0 = root, 1 = first recursive call, etc.)
         self._max_iterations = max_iterations
         
         # Initialize colorful logger
@@ -107,7 +109,8 @@ class RLM_REPL(RLM):
             context_str=context_str, 
             recursive_models=self.recursive_models,
             recursive_base_urls=self.recursive_base_urls,
-            depth=self.depth,
+            max_depth=self.max_depth,
+            current_depth=self.current_depth,
             api_key=self.api_key,
         )
         

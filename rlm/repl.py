@@ -76,42 +76,46 @@ class REPLEnv:
         context_json: Optional[dict | list] = None,
         context_str: Optional[str] = None,
         setup_code: str = None,
-        depth: int = 1,
+        max_depth: int = 1,
+        current_depth: int = 0,
     ):
         # Store the original working directory
         self.original_cwd = os.getcwd()
         
         # Create temporary directory (but don't change global working directory)
         self.temp_dir = tempfile.mkdtemp(prefix="repl_env_")
-        self.depth = depth
+        self.max_depth = max_depth
+        self.current_depth = current_depth
         
         # Default models if not provided
         default_models = recursive_models or ["gpt-5-mini"]
         default_base_urls = recursive_base_urls or []
         
-        # Get model for current depth level
-        if depth <= len(default_models):
-            current_model = default_models[depth - 1]
+        # Get model for current recursive depth level
+        # current_depth = 0 means root, so we use the first model for recursive calls
+        if current_depth < len(default_models):
+            current_model = default_models[current_depth]
         else:
             current_model = default_models[-1]
         
-        # Get base URL for current depth level
-        if depth <= len(default_base_urls):
-            current_base_url = default_base_urls[depth - 1]
+        # Get base URL for current recursive depth level
+        if current_depth < len(default_base_urls):
+            current_base_url = default_base_urls[current_depth]
         else:
             current_base_url = default_base_urls[-1] if default_base_urls else None
         
-        # Prepare models for next depth level
-        next_depth_models = default_models[1:] if len(default_models) > 1 else default_models
-        next_depth_base_urls = default_base_urls[1:] if len(default_base_urls) > 1 else default_base_urls
+        # Check if we should allow more recursion
+        # If current_depth + 1 < max_depth, then we can create another RLM_REPL
+        should_recurse = (current_depth + 1) < max_depth
 
-        if depth > 1:
+        if should_recurse:
             from rlm.rlm_repl import RLM_REPL
             self.sub_rlm: RLM = RLM_REPL(
                 api_key=api_key,
-                recursive_models=next_depth_models,
-                recursive_base_urls=next_depth_base_urls,
-                depth=depth - 1,
+                recursive_models=default_models,
+                recursive_base_urls=default_base_urls,
+                max_depth=max_depth,
+                current_depth=current_depth + 1,
                 enable_logging=False
             )
         else:
