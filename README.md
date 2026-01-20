@@ -78,8 +78,8 @@ print(result)
 
 ```bash
 # Build Docker images
-docker build -t rlm-inference:latest -f deploy/docker/Dockerfile.rlm-sidecar .
-docker build -t wasm-manager:latest -f deploy/docker/Dockerfile.wasm-manager .
+docker build -t rlm-inference:latest -f deploy/docker/Dockerfile.rlm .
+docker build -t rlm-minimal-wasm:latest -f deploy/docker/Dockerfile.wasm-repl .
 
 # Deploy to Kubernetes
 kubectl apply -f deploy/k8s/rlm-sidecar-deployment.yaml
@@ -158,7 +158,7 @@ rlm-minimal/
 ├── deploy/                       # Deployment files
 │   ├── docker/                   # Docker images
 │   │   ├── Dockerfile.rlm        # RLM inference image
-│   │   └── Dockerfile.wasm       # WASM execution image
+│   │   └── Dockerfile.wasm-repl  # WASM execution image
 │   ├── k8s/                      # Kubernetes config
 │   │   ├── rlm-deployment.yaml           # RLM deployment
 │   │   ├── wasm-repl-deployment.yaml     # WASM deployment

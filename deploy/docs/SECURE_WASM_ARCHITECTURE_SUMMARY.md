@@ -119,7 +119,7 @@ User Response
 ### 2. WASM Execution Plane
 
 **Files**:
-- [Dockerfile.wasm](Dockerfile.wasm) - Container image
+- [Dockerfile.wasm-repl](../deploy/docker/Dockerfile.wasm-repl) - Container image
 - [k8s/wasm-repl-deployment.yaml](k8s/wasm-repl-deployment.yaml) - k8s deployment
 - [rlm/repl_wasm.py](rlm/repl_wasm.py) - WASM executor
 - [rlm/repl_wasm_service.py](rlm/repl_wasm_service.py) - HTTP service
@@ -154,7 +154,7 @@ User Response
 docker build -t rlm-inference:latest -f deploy/docker/Dockerfile.rlm .
 
 # Build WASM execution image
-docker build -t wasm-repl:latest -f deploy/docker/Dockerfile.wasm .
+docker build -t wasm-repl:latest -f deploy/docker/Dockerfile.wasm-repl .
 ```
 
 ### 2. Deploy to Kubernetes

@@ -9,7 +9,7 @@ This guide helps you quickly set up and deploy the WASM-based REPL environment f
 - **WASM Executor**: [repl_wasm.py](rlm/repl_wasm.py) - Core WASM execution engine using Pyodide
 - **HTTP Service**: [repl_wasm_service.py](rlm/repl_wasm_service.py) - HTTP server for remote execution
 - **k8s Deployment**: [wasm-repl-deployment.yaml](k8s/wasm-repl-deployment.yaml) - Kubernetes deployment config
-- **Docker Image**: [Dockerfile.wasm](Dockerfile.wasm) - Container image definition
+- **Docker Image**: [Dockerfile.wasm-repl](../deploy/docker/Dockerfile.wasm-repl) - Container image definition
 - **Requirements**: [requirements-wasm.txt](requirements-wasm.txt) - Python dependencies
 - **Tests**: [test_wasm_repl.py](tests/test_wasm_repl.py) - Test suite
 - **Complete Documentation**: [WASM_REPL_SETUP.md](/Users/rexsasori/rlm-minimal/k8s/doc/WASM_REPL_SETUP.md) - Full setup guide
@@ -19,7 +19,7 @@ This guide helps you quickly set up and deploy the WASM-based REPL environment f
 ### Step 1: Build the Docker Image
 
 ```bash
-docker build -f Dockerfile.wasm -t rlm-minimal-wasm:latest .
+docker build -f deploy/docker/Dockerfile.wasm-repl -t rlm-minimal-wasm:latest .
 ```
 
 ### Step 2: Create LLM Secret
@@ -219,7 +219,7 @@ asyncio.run(execute_with_wasm())
 1. Read the [complete documentation](k8s/doc/WASM_REPL_SETUP.md)
 2. Check out the [test suite](tests/test_wasm_repl.py) for usage examples
 3. Explore the [k8s deployment](k8s/wasm-repl-deployment.yaml) configuration options
-4. Customize the [Dockerfile](Dockerfile.wasm) for your specific needs
+4. Customize the [Dockerfile](../deploy/docker/Dockerfile.wasm-repl) for your specific needs
 
 ## Support
 

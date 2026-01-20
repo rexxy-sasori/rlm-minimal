@@ -40,7 +40,7 @@ The WASM REPL provides:
 ### 1. Build the Docker Image
 
 ```bash
-docker build -f Dockerfile.wasm -t rlm-minimal-wasm:latest .
+docker build -f deploy/docker/Dockerfile.wasm-repl -t rlm-minimal-wasm:latest .
 ```
 
 ### 2. Configure Secrets

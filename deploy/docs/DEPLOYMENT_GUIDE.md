@@ -57,7 +57,7 @@ This guide explains how to deploy RLM with a secure, isolated WASM execution pla
 #### Build WASM Execution Image
 
 ```bash
-docker build -f Dockerfile.wasm -t rlm-minimal-wasm:latest .
+docker build -f deploy/docker/Dockerfile.wasm-repl -t rlm-minimal-wasm:latest .
 ```
 
 #### Build RLM Inference Image
