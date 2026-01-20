@@ -157,23 +157,81 @@ rlm-minimal/
 │
 ├── deploy/                       # Deployment files
 │   ├── docker/                   # Docker images
+│   │   ├── Dockerfile.base       # Base image
 │   │   ├── Dockerfile.rlm        # RLM inference image
+│   │   ├── Dockerfile.rlm-sidecar # Sidecar deployment
+│   │   ├── Dockerfile.wasm-manager # WASM manager
 │   │   └── Dockerfile.wasm-repl  # WASM execution image
 │   ├── k8s/                      # Kubernetes config
-│   │   ├── rlm-deployment.yaml           # RLM deployment
-│   │   ├── wasm-repl-deployment.yaml     # WASM deployment
-│   │   └── network-policies.yaml         # Network security
+│   │   ├── doc/                  # K8s documentation
+│   │   │   ├── SECURE_ARCHITECTURE.md
+│   │   │   └── WASM_REPL_SETUP.md
+│   │   ├── benchmark-deployment.yaml     # Benchmark runner
+│   │   ├── dataset-init-job.yaml        # Dataset initialization
+│   │   ├── network-policies.yaml        # Network security
+│   │   ├── rlm-deployment.yaml          # RLM deployment
+│   │   ├── rlm-sidecar-deployment.yaml  # Sidecar deployment
+│   │   └── wasm-repl-deployment.yaml    # WASM deployment
 │   └── docs/                     # Deployment docs
+│       ├── ARCHITECTURE_DIAGRAM.txt
+│       ├── DEPLOYMENT_GUIDE.md
+│       ├── SECURE_WASM_ARCHITECTURE_SUMMARY.md
+│       ├── SIDECAR_ARCHITECTURE_GUIDE.md
+│       └── WASM_QUICKSTART.md
+│
+├── benchmarks/                   # Benchmark suite
+│   ├── docs/                     # Benchmark documentation
+│   │   ├── BENCHMARK_ANALYSIS.md
+│   │   ├── BENCHMARK_GUIDE.md
+│   │   ├── DATASET_SETUP.md
+│   │   └── KUBERNETES_DEPLOYMENT.md
+│   ├── __init__.py               # Package exports
+│   ├── README.md                 # Benchmarks README
+│   ├── run_benchmarks.py         # Main benchmark runner
+│   ├── base.py                   # Base benchmark classes
+│   ├── config.py                 # Configuration
+│   ├── runner.py                 # Runner implementation
+│   ├── analysis.py               # Analysis utilities
+│   ├── oolong.py                 # OOLONG benchmark
+│   ├── deep_research.py          # Deep Research benchmark
+│   └── ruler.py                  # RULER benchmark
 │
 ├── examples/                     # Example scripts
 │   ├── basic_usage.py            # Basic usage example
-│   └── model_comparison.py       # Model comparison example
+│   ├── main.py                   # Main example
+│   ├── model_comparison.py       # Model comparison example
+│   └── sidecar_state_persistence.py # Sidecar example
 │
 ├── tests/                        # Test suite
+│   ├── benchmarks/               # Benchmark tests
+│   ├── depth_logic/              # Depth logic tests
+│   ├── examples/                 # Example tests
+│   ├── model_propagation/        # Model propagation tests
+│   ├── __init__.py
+│   ├── README.md
 │   └── test_wasm_repl.py         # WASM execution tests
 │
+├── scripts/                      # Utility scripts
+│   ├── build_with_datasets.sh    # Build with datasets
+│   ├── docker_build.sh           # Docker build script
+│   └── setup_datasets.py         # Dataset setup
+│
+├── doc/                          # Additional documentation
+│   ├── CHANGE_SUMMARY.md
+│   ├── DEPENDENCIES.md
+│   ├── DEPTH_IMPLEMENTATION.md
+│   └── QUERY_EXAMPLE.md
+│
+├── media/                        # Images and diagrams
+│   ├── rich.png
+│   └── rlm.png
+│
+├── .dockerignore
+├── .env-example                  # Environment variables template
+├── .gitignore
+├── Dockerfile                    # Main Dockerfile
+├── LICENSE
 ├── README.md                     # This file
-├── ORGANIZATION_SUMMARY.md       # Reorganization summary
 ├── requirements.txt              # Core dependencies
 └── requirements-wasm.txt         # WASM-specific dependencies
 ```
