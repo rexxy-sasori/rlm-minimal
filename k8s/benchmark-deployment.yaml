@@ -87,12 +87,16 @@ spec:
           mountPath: /data
         command: ["python"]
         args:
-        - "run_benchmarks.py"
+        - "benchmarks/run_benchmarks.py"
+        - "--benchmark"
         - "$(BENCHMARK_TYPE)"
-        - "--num-examples"
+        - "--max-tasks"
         - "$(NUM_EXAMPLES)"
-        - "--output"
-        - "$(OUTPUT_FILE)"
+        - "--output-dir"
+        - "/results"
+        - "--async"
+        - "--concurrency"
+        - "3"
       volumes:
       - name: results-volume
         emptyDir: {}
