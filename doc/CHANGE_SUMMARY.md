@@ -155,7 +155,7 @@ docker build --build-arg SETUP_DATASETS=true -t rlm-minimal:full .
 │  │ (Optional)      │    │                             │    │
 │  │                 │    │  ┌───────────────────────┐  │    │
 │  │ • Downloads     │───▶│  │ Init Container        │  │    │
-│  │ • Stores in PVC │    │  │ (Dataset Check)       │  │    │
+│  │ • Stores in PVC │    │  │ (Dataset Check)        │  │    │
 │  └─────────────────┘    │  └───────────────────────┘  │    │
 │                         │              │              │    │
 │                         │              ▼              │    │
