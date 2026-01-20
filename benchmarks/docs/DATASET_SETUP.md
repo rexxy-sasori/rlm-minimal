@@ -29,7 +29,7 @@ By default, the benchmark uses synthetic data. No dataset setup is required:
 
 ```bash
 # Deploy benchmark with synthetic data (default)
-kubectl apply -f k8s/benchmark-deployment.yaml
+kubectl apply -f deploy/k8s/benchmark-deployment.yaml
 ```
 
 ## Setup with Official Datasets
@@ -39,7 +39,7 @@ kubectl apply -f k8s/benchmark-deployment.yaml
 First, create a PVC to store the downloaded datasets:
 
 ```bash
-kubectl apply -f k8s/dataset-init-job.yaml
+kubectl apply -f deploy/k8s/dataset-init-job.yaml
 ```
 
 This creates a 50Gi PVC. Adjust the storage size in `dataset-init-job.yaml` if needed.
@@ -71,7 +71,7 @@ Set the environment variable to use official datasets:
 
 ```bash
 # Deploy with official datasets enabled
-kubectl apply -f k8s/benchmark-deployment.yaml
+kubectl apply -f deploy/k8s/benchmark-deployment.yaml
 kubectl set env deployment/rlm-benchmark USE_OFFICIAL_DATASETS=true
 ```
 
@@ -169,7 +169,7 @@ kubectl create job dataset-init --from=cronjob/dataset-init-job
 kubectl delete pvc dataset-pvc
 
 # Recreate PVC
-kubectl apply -f k8s/dataset-init-job.yaml
+kubectl apply -f deploy/k8s/dataset-init-job.yaml
 ```
 
 ## Troubleshooting
@@ -196,8 +196,8 @@ kubectl edit pvc dataset-pvc
 
 # Or delete and recreate with larger size
 kubectl delete pvc dataset-pvc
-# Modify storage: 100Gi in dataset-init-job.yaml
-kubectl apply -f k8s/dataset-init-job.yaml
+# Modify storage: 100Gi in deploy/k8s/dataset-init-job.yaml
+kubectl apply -f deploy/k8s/dataset-init-job.yaml
 ```
 
 ### Hugging Face Authentication

@@ -33,7 +33,7 @@ kubectl create secret generic llm-secrets \
 Deploy with default settings (OOLONG benchmark, 10 examples):
 
 ```bash
-kubectl apply -f k8s/benchmark-deployment.yaml
+kubectl apply -f deploy/k8s/benchmark-deployment.yaml
 ```
 
 ### 3. Run a Specific Benchmark
@@ -115,7 +115,7 @@ To run different benchmarks simultaneously, create separate deployments with dif
 
 ```bash
 # Create deployment for OOLONG
-kubectl apply -f k8s/benchmark-deployment.yaml
+kubectl apply -f deploy/k8s/benchmark-deployment.yaml
 kubectl set env deployment/rlm-benchmark BENCHMARK_TYPE=oolong
 
 # Create deployment for RULER (with different name)

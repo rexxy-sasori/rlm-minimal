@@ -36,8 +36,8 @@ spec:
             echo "Checking for official datasets..."
             if [ ! -f "/data/queries.jsonl" ] || [ ! -f "/data/corpus.jsonl" ]; then
               echo "ERROR: Official datasets not found!"
-              echo "Please run the dataset initialization job first:"
-              echo "  kubectl apply -f k8s/dataset-init-job.yaml"
+              echo "Please run the dataset initialization job first:"  
+              echo "  kubectl apply -f deploy/k8s/dataset-init-job.yaml"
               exit 1
             fi
             echo "Official datasets found - proceeding"
