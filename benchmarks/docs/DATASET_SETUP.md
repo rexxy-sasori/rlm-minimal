@@ -1,6 +1,13 @@
-# Dataset Setup Guide
+# Dataset Setup Guide for RLM Benchmarks
 
-This guide explains how to set up both synthetic and official datasets for RLM benchmarks in Kubernetes.
+> **Location:** `/benchmarks/docs/DATASET_SETUP.md`
+
+This guide explains how to set up datasets for running RLM benchmarks, including both official and synthetic dataset options.
+
+## Related Documentation
+
+- [BENCHMARK_ANALYSIS.md](BENCHMARK_ANALYSIS.md) - Benchmark analysis and implementation plan
+- [KUBERNETES_DEPLOYMENT.md](KUBERNETES_DEPLOYMENT.md) - Deploy benchmarks to Kubernetes
 
 ## Dataset Options
 

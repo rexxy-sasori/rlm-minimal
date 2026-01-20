@@ -1,6 +1,13 @@
 # RLM Kubernetes Benchmark Deployment
 
-This directory contains Kubernetes configuration files for running RLM benchmarks in a Kubernetes cluster.
+> **Location:** `/benchmarks/docs/KUBERNETES_DEPLOYMENT.md`
+
+This guide explains how to deploy and run RLM benchmarks in a Kubernetes cluster.
+
+## Related Documentation
+
+- [BENCHMARK_ANALYSIS.md](BENCHMARK_ANALYSIS.md) - Benchmark analysis and implementation plan
+- [DATASET_SETUP.md](DATASET_SETUP.md) - Setup benchmark datasets
 
 ## Available Benchmarks
 

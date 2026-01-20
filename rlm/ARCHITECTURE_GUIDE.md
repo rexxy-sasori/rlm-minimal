@@ -1,6 +1,6 @@
 # RLM Architecture Guide
 
-RLM supports two distinct architectures for executing generated code during inference.
+RLM supports three distinct architectures for executing generated code during inference, each with different security, performance, and deployment characteristics.
 
 ## Architecture Overview
 
@@ -24,7 +24,24 @@ RLM Package Structure
 │   └── rlm.py              # Base RLM class
 ```
 
+## Architecture Comparison
+
+| Feature | Local (Architecture 1) | Same-Pod (Architecture 2) | Different-Pod (Architecture 3) |
+|---------|------------------------|---------------------------|--------------------------------|
+| **Code Execution** | Same process | Sidecar container | Remote service |
+| **Isolation** | None | Container-level | Pod-level + network |
+| **Security** | Low | Medium | High |
+| **Latency** | Low | Very Low | Medium |
+| **State Persistence** | Yes (in-memory) | Yes (session-based) | No (stateless) |
+| **Deployment Complexity** | None | Low | Medium |
+| **Scalability** | N/A | Pod-level | Independent scaling |
+| **Use Case** | Development/Testing | Production (single-tenant) | Production (multi-tenant) |
+
+---
+
 ## Architecture 1: Local Execution (Default)
+
+**Code execution and RLM_REPL run in the same process.**
 
 ### How It Works
 
@@ -55,6 +72,7 @@ RLM Package Structure
 - ✅ Low latency - same process execution
 - ✅ Easy debugging - everything in one place
 - ✅ No network overhead
+- ✅ State persistence across execution
 
 ### Cons
 - ❌ Security risk - code runs in same process as LLM
@@ -67,6 +85,7 @@ RLM Package Structure
 - Local experimentation
 - Trusted code environments
 - Low-security requirements
+- Quick prototyping
 
 ### Usage Example
 
@@ -93,7 +112,115 @@ print(result)
 - `rlm/local/rlm_repl.py` - RLM with local execution
 - `rlm/local/__init__.py` - Module exports
 
-## Architecture 2: Remote WASM Execution (Secure)
+---
+
+## Architecture 2: Same-Pod (Sidecar) Execution
+
+**Code execution (in WASM) and RLM_REPL run in the same pod but different containers.**
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      KUBERNETES POD                             │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                                                         │   │
+│  │  ┌─────────────────────────────────────────────────┐    │   │
+│  │  │              RLM Inference (Container 1)        │    │   │
+│  │  │                                                 │    │   │
+│  │  │  • LLM Model                                    │    │   │
+│  │  │  • Code Generation                              │    │   │
+│  │  │  • Concurrent Sessions (Session IDs)            │    │   │
+│  │  │  • REPL Factory (Local to Pod)                  │    │   │
+│  │  └─────────────────────────────────────────────────┘    │   │
+│  │                         │                               │    │   │
+│  │                         ▼ (localhost:8080)              │    │   │
+│  │  ┌─────────────────────────────────────────────────┐    │   │
+│  │  │           WASM Manager (Container 2)            │    │   │
+│  │  │                                                 │    │   │
+│  │  │  • Session Management                           │    │   │
+│  │  │  • Multiple WASM Runtime Instances              │    │   │
+│  │  │  • State Persistence per Session                │    │   │
+│  │  │  • Pyodide Sandboxes (1 per RLM session)        │    │   │
+│  │  │                                                 │    │   │
+│  │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐        │    │   │
+│  │  │  │ Session  │ │ Session  │ │ Session  │        │    │   │
+│  │  │  │ WASM #1  │ │ WASM #2  │ │ WASM #N  │        │    │   │
+│  │  │  └──────────┘ └──────────┘ └──────────┘        │    │   │
+│  │  └─────────────────────────────────────────────────┘    │   │
+│  │                                                         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                          │                                     │
+│                          ▼                                     │
+│              Network Policy (Pod-level)                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+#### 1. RLM Inference Container
+- **Image**: `rlm-inference:latest`
+- **Port**: 8000
+- **Responsibilities**:
+  - LLM model execution
+  - Code generation during reasoning
+  - Session management
+  - REPL factory for creating sidecar connections
+  - HTTP API for inference requests
+
+#### 2. WASM Manager Container
+- **Image**: `wasm-manager:latest`
+- **Port**: 8080
+- **Responsibilities**:
+  - Session management
+  - Multiple isolated WASM runtimes
+  - State persistence per session
+  - Pyodide sandbox execution
+  - HTTP API for session operations
+
+### Data Flow
+
+1. **RLM Inference** generates code during reasoning
+2. **SidecarREPLFactory** creates a SidecarREPLEnv
+3. **SidecarREPLEnv** initializes:
+   - Creates new WASM session via `POST /session`
+   - Gets session ID from response
+4. **RLM** sends code to execute via `POST /session/{session_id}/execute`
+5. **WASM Manager** executes in isolated Pyodide runtime
+6. **Result** returned to RLM
+7. **State persists** for subsequent executions in same session
+8. **Cleanup** when RLM completes via `DELETE /session/{session_id}`
+
+### Pros
+- ✅ Good security - container isolation
+- ✅ LLM API keys never exposed to execution plane
+- ✅ Very low latency - localhost communication
+- ✅ State persistence per session
+- ✅ Resource isolation - no contention
+- ✅ Simpler deployment than different-pod
+
+### Cons
+- ❌ Requires Kubernetes deployment
+- ❌ Pod-level scaling (both containers scale together)
+- ❌ More complex than local execution
+
+### Use Cases
+- Production deployment (single-tenant)
+- Lower-latency requirements
+- Session-based applications
+- Kubernetes-based infrastructure
+- Medium-security requirements
+
+### Files
+- `deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md` - Detailed sidecar guide
+- `k8s/rlm-sidecar-deployment.yaml` - Kubernetes deployment
+- `rlm/remote/repl_sidecar.py` - Sidecar REPL client
+
+---
+
+## Architecture 3: Different-Pod (Remote) Execution
+
+**Code execution (in WASM) and RLM_REPL run in truly remote pods.**
 
 ### How It Works
 
@@ -150,6 +277,35 @@ print(result)
 7. Final answer returned to user
 ```
 
+### Components
+
+#### 1. RLM Inference Plane
+- **Deployment**: `k8s/rlm-deployment.yaml`
+- **Responsibilities**:
+  - LLM API calls (OpenAI or compatible)
+  - Prompt engineering and context management
+  - Code generation (NOT execution)
+  - Orchestration of recursive calls
+  - Communication with WASM service
+- **Security**:
+  - Has access to LLM API keys
+  - No code execution capability
+  - Network policy: only egress to WASM service and LLM API
+
+#### 2. WASM Execution Plane
+- **Deployment**: `k8s/wasm-repl-deployment.yaml`
+- **Responsibilities**:
+  - Receive code for execution via HTTP API
+  - Execute code in Pyodide WASM sandbox
+  - Return results (stdout, stderr, variables)
+  - Enforce resource limits and timeouts
+- **Security**:
+  - Isolated WASM sandbox
+  - NO access to LLM API keys
+  - NO access to sensitive data
+  - Resource quotas per execution
+  - Network policy: only ingress from RLM service
+
 ### Pros
 - ✅ Maximum security - complete isolation
 - ✅ LLM API keys never exposed to execution plane
@@ -157,22 +313,23 @@ print(result)
 - ✅ Scalable - scale RLM and WASM independently
 - ✅ Production-ready - suitable for untrusted code
 - ✅ Defense in depth - multiple security layers
+- ✅ Multi-tenant capable
 
 ### Cons
 - ❌ More complex setup - requires k8s deployment
 - ❌ Network latency - HTTP communication overhead
 - ❌ Additional infrastructure - WASM service required
+- ❌ Stateless (no session persistence)
 
 ### Use Cases
-- Production deployment
-- Multi-tenant environments
+- Production deployment (multi-tenant)
 - Executing untrusted code
 - High-security requirements
 - Kubernetes-based infrastructure
+- Independent scaling needs
+- Enterprise deployments
 
 ### Usage Example
-
-#### RLM Inference Service
 
 ```python
 from rlm.remote import RemoteREPLFactory
@@ -202,216 +359,49 @@ result = rlm.completion(context, query)
 print(result)
 ```
 
-#### WASM Execution Service
-
-```python
-# Run as HTTP service
-python -m rlm.wasm.repl_wasm_service --host 0.0.0.0 --port 8000
-```
-
-Or deploy via k8s:
-
-```bash
-kubectl apply -f deploy/k8s/wasm-repl-deployment.yaml
-```
-
 ### Files
+- `deploy/docs/SECURE_WASM_ARCHITECTURE_SUMMARY.md` - Architecture summary
+- `k8s/doc/SECURE_ARCHITECTURE.md` - Detailed security guide
+- `k8s/rlm-deployment.yaml` - RLM inference deployment
+- `k8s/wasm-repl-deployment.yaml` - WASM execution deployment
 - `rlm/remote/repl_remote.py` - Remote REPL client
-- `rlm/remote/rlm_service.py` - RLM HTTP service
-- `rlm/wasm/repl_wasm.py` - WASM executor
 - `rlm/wasm/repl_wasm_service.py` - WASM HTTP service
 
-## Architecture Comparison
+---
 
-| Feature | Local Execution | Remote WASM Execution |
-|---------|----------------|----------------------|
-| **Security** | Low - same process | High - complete isolation |
-| **Complexity** | Simple - no extra services | Complex - k8s deployment |
-| **Latency** | Low - same process | Higher - network overhead |
-| **Scalability** | Limited | Excellent - independent scaling |
-| **Isolation** | None | Complete - WASM sandbox |
-| **LLM Key Safety** | At risk | Protected - never exposed |
-| **Resource Management** | Shared | Dedicated quotas |
-| **Setup Time** | Minutes | Hours (k8s deployment) |
-| **Debugging** | Easy | More complex |
-| **Production Ready** | No | Yes |
-| **Use Case** | Development/Testing | Production/High Security |
+## Architecture Selection Guide
 
-## Which Architecture Should You Choose?
+| Requirement | Recommended Architecture |
+|-------------|--------------------------|
+| Development / Testing | Local (Architecture 1) |
+| Quick prototyping | Local (Architecture 1) |
+| Lowest latency | Same-Pod (Architecture 2) |
+| Session persistence | Same-Pod (Architecture 2) |
+| Multi-tenant | Different-Pod (Architecture 3) |
+| Highest security | Different-Pod (Architecture 3) |
+| Independent scaling | Different-Pod (Architecture 3) |
+| Enterprise production | Different-Pod (Architecture 3) |
+| Single-tenant production | Same-Pod (Architecture 2) |
 
-### Choose Local Execution If:
-- You're developing or testing
-- You trust the generated code
-- You need minimal setup
-- You're working in a single-machine environment
-- Low latency is critical
+---
 
-### Choose Remote WASM Execution If:
-- You're deploying to production
-- You need to execute untrusted code
-- Security is a top priority
-- You're running in Kubernetes
-- You need to scale independently
-- You have compliance requirements
+## Migration Path
 
-## Migration Guide
-
-### From Local to Remote
-
-1. **Deploy WASM service**:
-   ```bash
-   kubectl apply -f deploy/k8s/wasm-repl-deployment.yaml
-   ```
-
-2. **Update your code**:
-   ```python
-   # Before (local)
-   from rlm.local import RLM_REPL
-   rlm = RLM_REPL(model="gpt-5")
-   
-   # After (remote)
-   from rlm.remote import RemoteREPLFactory
-   from rlm.local import RLM_REPL
-   
-   factory = RemoteREPLFactory(wasm_service_url="http://wasm-service:8000")
-   rlm = RLM_REPL(model="gpt-5")
-   ```
-
-3. **Apply network policies**:
-   ```bash
-   kubectl apply -f deploy/k8s/network-policies.yaml
-   ```
-
-## Deployment Options
-
-### Option A: Local Development
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run local RLM
-python -c "
-from rlm.local import RLM_REPL
-rlm = RLM_REPL(model='gpt-5')
-result = rlm.completion('context', 'query')
-print(result)
-"
+```
+Local (Architecture 1)
+    │
+    └───> Same-Pod (Architecture 2)
+              │
+              └───> Different-Pod (Architecture 3)
 ```
 
-### Option B: Local with Remote WASM
+Start with local execution for development, then migrate to same-pod for production, and finally to different-pod for enterprise-scale deployments.
 
-```bash
-# Terminal 1: Start WASM service
-python -m rlm.wasm.repl_wasm_service --port 8000
+---
 
-# Terminal 2: Run RLM with remote execution
-WASM_SERVICE_URL=http://localhost:8000 python -c "
-from rlm.remote import RemoteREPLFactory
-from rlm.local import RLM_REPL
+## Related Documentation
 
-factory = RemoteREPLFactory(wasm_service_url='http://localhost:8000')
-rlm = RLM_REPL(model='gpt-5')
-result = rlm.completion('context', 'query')
-print(result)
-"
-```
-
-### Option C: Kubernetes Deployment
-
-See [DEPLOYMENT_GUIDE.md](../deploy/docs/DEPLOYMENT_GUIDE.md) for complete instructions.
-
-## Security Considerations
-
-### Local Execution
-- Only execute code you trust
-- Never expose to untrusted inputs
-- Consider as development-only
-
-### Remote WASM Execution
-- Use network policies to restrict traffic
-- Store secrets in k8s Secrets
-- Enable audit logging
-- Regular security updates
-- Monitor resource usage
-
-## Performance Tips
-
-### Local Execution
-- Reuse RLM instances
-- Batch similar queries
-- Monitor memory usage
-
-### Remote WASM Execution
-- Use connection pooling
-- Set appropriate timeouts
-- Scale WASM replicas based on load
-- Deploy RLM and WASM in same AZ
-- Use HTTP/2 for multiplexing
-
-## Monitoring
-
-### Local Execution
-- Log to stdout/stderr
-- Use Python profiling
-- Monitor process metrics
-
-### Remote WASM Execution
-- Use Prometheus for metrics
-- Use Grafana for dashboards
-- Monitor k8s pod metrics
-- Track HTTP request latency
-- Alert on error rates
-
-## Troubleshooting
-
-### Local Execution Issues
-- Check Python version compatibility
-- Verify LLM API key is set
-- Review error logs
-- Check memory usage
-
-### Remote Execution Issues
-- Verify WASM service is running
-- Check network connectivity
-- Review HTTP error codes
-- Monitor WASM pod health
-- Check network policies
-
-## Best Practices
-
-### General
-- Always validate generated code
-- Set appropriate timeouts
-- Use logging for debugging
-- Test with known inputs
-
-### Local Execution
-- Use for development only
-- Never in production
-- Limit code complexity
-- Monitor resource usage
-
-### Remote Execution
-- Use k8s for deployment
-- Enable network policies
-- Use HPA for scaling
-- Monitor all components
-- Regular security audits
-
-## Resources
-
-- [Deployment Guide](../deploy/docs/DEPLOYMENT_GUIDE.md)
-- [Secure Architecture](../deploy/docs/SECURE_ARCHITECTURE_SUMMARY.md)
-- [WASM Quick Start](../deploy/docs/WASM_QUICKSTART.md)
-- [k8s Configuration](../deploy/k8s/)
-- [Docker Images](../deploy/docker/)
-
-## Support
-
-For issues or questions:
-1. Check this guide
-2. Review the deployment documentation
-3. Examine the test suite
-4. Check k8s logs and metrics
-5. Review security best practices
+- `deploy/docs/DEPLOYMENT_GUIDE.md` - Deployment instructions
+- `deploy/docs/WASM_QUICKSTART.md` - WASM quickstart guide
+- `k8s/doc/WASM_REPL_SETUP.md` - WASM REPL setup
+- `doc/DEPTH_IMPLEMENTATION.md` - Depth implementation details

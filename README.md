@@ -101,22 +101,37 @@ kubectl apply -f deploy/k8s/network-policies.yaml
 
 ## 📚 Documentation
 
-### Architecture Guides
-- **[Architecture Guide](rlm/ARCHITECTURE_GUIDE.md)**: Complete guide to both architectures
-- **[Sidecar Architecture Guide](deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md)**: Detailed sidecar architecture guide
-- **[Structure Diagram](rlm/STRUCTURE.txt)**: Visual package structure
+### Architecture Guides (3 Architectures)
+- **[Architecture Guide](rlm/ARCHITECTURE_GUIDE.md)**: Complete guide to all three architectures with comparison tables
+  - **Architecture 1**: Local Execution (same process)
+  - **Architecture 2**: Same-Pod Execution (sidecar pattern)
+  - **Architecture 3**: Different-Pod Execution (remote)
+- **[Sidecar Architecture Guide](deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md)**: Detailed Architecture 2 guide with deployment instructions
+- **[Secure WASM Architecture Summary](deploy/docs/SECURE_WASM_ARCHITECTURE_SUMMARY.md)**: Architecture 3 quick deployment guide
+- **[Secure Architecture](k8s/doc/SECURE_ARCHITECTURE.md)**: Architecture 3 security details
 
 ### Deployment Guides
 - **[Deployment Guide](deploy/docs/DEPLOYMENT_GUIDE.md)**: Complete production deployment guide
-- **[Sidecar Architecture Guide](deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md)**: Sidecar deployment guide
-- **[Secure Architecture](deploy/docs/SECURE_ARCHITECTURE_SUMMARY.md)**: Security overview
 - **[WASM Quick Start](deploy/docs/WASM_QUICKSTART.md)**: WASM execution quick start
+- **[WASM REPL Setup](k8s/doc/WASM_REPL_SETUP.md)**: Complete WASM REPL setup guide
 
-### Component Documentation
+### Benchmark Documentation
+- **[Benchmark Analysis](benchmarks/docs/BENCHMARK_ANALYSIS.md)**: Analysis of RLM benchmarks (OOLONG, RULER, Deep Research)
+- **[Kubernetes Deployment](benchmarks/docs/KUBERNETES_DEPLOYMENT.md)**: Deploy benchmarks to Kubernetes
+- **[Dataset Setup](benchmarks/docs/DATASET_SETUP.md)**: Setup benchmark datasets
+
+### Core Documentation
+- **[Depth Implementation](doc/DEPTH_IMPLEMENTATION.md)**: Depth parameter implementation details
+- **[Query Example](doc/QUERY_EXAMPLE.md)**: Query API usage examples
+- **[Dependencies](doc/DEPENDENCIES.md)**: Project dependencies documentation
+- **[Change Summary](doc/CHANGE_SUMMARY.md)**: Kubernetes deployment changes summary
+
+### Logging Documentation
+- **[Logger README](rlm/logger/README.md)**: Main logger documentation
 - **[TimescaleDB Quick Start](rlm/logger/doc/QUICKSTART_TIMESCALE.md)**: Get started with TimescaleDB logging
 - **[Token Cache Tracking](rlm/logger/doc/TOKEN_CACHE_TRACKING.md)**: Track token cache usage and cost savings
-- **[Logger Documentation](rlm/logger/README.md)**: Detailed logger implementation guide
 - **[Query API](rlm/logger/doc/QUERY_API.md)**: Query logged data
+- **[Recursive Logging](rlm/logger/doc/RECURSIVE_LOGGING.md)**: Recursive logging implementation
 
 ## 📁 Project Structure
 

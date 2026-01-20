@@ -1,5 +1,7 @@
 # Secure WASM Architecture for RLM - Summary
 
+> **Note:** This is Architecture 3 (Different-Pod Execution) in the [main RLM Architecture Guide](/Users/rexsasori/rlm-minimal/rlm/ARCHITECTURE_GUIDE.md). Refer to the main guide for architecture comparison, pros/cons, and use cases.
+
 ## The Problem
 
 When RLM generates code during inference, executing it directly in the same pod creates security risks:
@@ -148,183 +150,143 @@ User Response
 ### 1. Build Images
 
 ```bash
-docker build -f Dockerfile.wasm -t rlm-minimal-wasm:latest .
-docker build -f Dockerfile.rlm -t rlm-minimal:latest .
+# Build RLM inference image
+docker build -t rlm-inference:latest -f deploy/docker/Dockerfile.rlm .
+
+# Build WASM execution image
+docker build -t wasm-repl:latest -f deploy/docker/Dockerfile.wasm .
 ```
 
-### 2. Create Secret
+### 2. Deploy to Kubernetes
 
 ```bash
-kubectl create secret generic llm-secrets \
-  --from-literal=api-key="your-llm-api-key"
-```
-
-### 3. Deploy WASM Service
-
-```bash
-kubectl apply -f k8s/wasm-repl-deployment.yaml
-kubectl get pods -l app=wasm-repl
-```
-
-### 4. Deploy RLM Service
-
-```bash
+# Deploy RLM inference
 kubectl apply -f k8s/rlm-deployment.yaml
-kubectl get pods -l app=rlm-inference
-```
+kubectl apply -f k8s/rlm-service.yaml
 
-### 5. Apply Network Policies
+# Deploy WASM execution
+kubectl apply -f k8s/wasm-repl-deployment.yaml
+kubectl apply -f k8s/wasm-repl-service.yaml
 
-```bash
+# Apply network policies
 kubectl apply -f k8s/network-policies.yaml
 ```
 
-### 6. Test
+### 3. Configure Environment Variables
 
 ```bash
-# Test WASM
-WASM_IP=$(kubectl get service wasm-repl-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -X POST http://$WASM_IP/execute \
-  -H "Content-Type: application/json" \
-  -d '{"code": "print(\"Hello WASM!\")", "context": {}}'
+# Set in deployment manifests or via ConfigMap
+export LLM_API_KEY="your-key"
+export WASM_SERVICE_URL="http://wasm-repl-service:8000"
+export LOG_LEVEL="INFO"
+```
 
-# Test RLM
-RLM_IP=$(kubectl get service rlm-inference-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -X POST http://$RLM_IP/infer \
+### 4. Verify Deployment
+
+```bash
+# Check pods
+kubectl get pods -l app=rlm
+kubectl get pods -l app=wasm-repl
+
+# Check services
+kubectl get services
+
+# Test WASM service
+kubectl exec -it <rlm-pod> -- curl http://wasm-repl-service:8000/health
+```
+
+### 5. Test Inference
+
+```bash
+# Port forward to RLM service
+kubectl port-forward service/rlm-service 8000:8000
+
+# Test with curl
+curl -X POST http://localhost:8000/completion \
   -H "Content-Type: application/json" \
-  -d '{"query": "What is 42 + 10?", "context": "You are helpful."}'
+  -d '{
+    "context": "You are a helpful assistant.",
+    "query": "What is 42 + 10?"
+  }'
+```
+
+### 6. Monitor and Scale
+
+```bash
+# View logs
+kubectl logs -f deployment/rlm-deployment
+kubectl logs -f deployment/wasm-repl-deployment
+
+# Scale deployments
+kubectl scale deployment/rlm-deployment --replicas=5
+kubectl scale deployment/wasm-repl-deployment --replicas=10
 ```
 
 ## Security Features
 
-✅ **Complete Isolation**: LLM inference and code execution in separate pods
-✅ **Network Segmentation**: Network policies restrict traffic flow
-✅ **WASM Sandbox**: Code runs in isolated Pyodide environment
-✅ **Resource Limits**: CPU/memory quotas prevent exhaustion
-✅ **Secrets Protection**: LLM keys never reach WASM plane
-✅ **Non-Root Users**: All containers run as non-root
-✅ **No Privileges**: No privileged containers or capabilities
+### Defense in Depth
 
-## Benefits
+| Layer | Mechanism | Purpose |
+|-------|-----------|----------|
+| **1. Network** | Network policies | Restrict traffic between components |
+| **2. Pod** | Isolated pods | Prevent pod-to-pod attacks |
+| **3. Container** | Runtime security | Limit container capabilities |
+| **4. WASM** | Pyodide sandbox | Isolate code execution |
+| **5. Application** | API authentication | Secure API endpoints |
 
-### Security
-- Even if WASM plane is compromised, LLM keys are safe
-- No direct code execution in inference environment
-- Defense in depth with multiple security layers
+### Resource Protection
 
-### Scalability
-- Scale RLM and WASM independently
-- Handle more inference requests by scaling RLM
-- Handle more code execution by scaling WASM
-- Stateless WASM pods can use spot instances
-
-### Reliability
-- Rolling updates for zero downtime
-- Pod disruption budgets for high availability
-- Independent failure domains
-
-### Performance
-- WASM execution is fast (Pyodide pre-initialized)
-- HTTP communication is efficient
-- Connection pooling between services
-
-## Configuration
-
-### Environment Variables
-
-**RLM Inference**:
-- `LLM_API_KEY` - LLM API key (from secret)
-- `LLM_BASE_URL` - LLM API base URL
-- `LLM_MODEL` - Default LLM model
-- `WASM_SERVICE_URL` - WASM service URL (http://wasm-repl-service:8000)
-- `MAX_DEPTH` - Max recursion depth
-- `EXECUTION_TIMEOUT` - Code timeout (30s)
-
-**WASM Execution**:
-- `MAX_DEPTH` - Max recursion depth
-- `EXECUTION_TIMEOUT` - Code timeout (30s)
-
-### Resource Limits
-
-**RLM Pods**:
-- Requests: 1Gi memory, 1 CPU
-- Limits: 2Gi memory, 2 CPU
-
-**WASM Pods**:
-- Requests: 512Mi memory, 0.5 CPU
-- Limits: 1Gi memory, 1 CPU
-
-## Scaling
-
-### Manual Scaling
-
-```bash
-kubectl scale deployment rlm-inference-deployment --replicas=10
-kubectl scale deployment wasm-repl-deployment --replicas=20
+```yaml
+# Example resource limits
+resources:
+  requests:
+    memory: "1Gi"
+    cpu: "500m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
 ```
-
-### Autoscaling
-
-See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for HPA configuration.
 
 ## Monitoring
 
-### Metrics
+### Metrics to Track
 
-```bash
-# Pod resource usage
-kubectl top pod -l app=rlm-inference
-kubectl top pod -l app=wasm-repl
+- **RLM Inference**:
+  - Request latency
+  - Code generation frequency
+  - Error rates
+  - Concurrent sessions
 
-# Deployment status
-kubectl rollout status deployment/rlm-inference-deployment
-kubectl rollout status deployment/wasm-repl-deployment
-```
+- **WASM Execution**:
+  - Execution duration
+  - Sandbox initialization time
+  - Memory usage per execution
+  - Timeout events
 
 ### Logging
 
-```bash
-# Follow logs
-kubectl logs -l app=rlm-inference -f
-kubectl logs -l app=wasm-repl -f
+```python
+# Example structured logging
+import logging
+
+logger = logging.getLogger(__name__)
+
+logger.info(
+    "Code execution",
+    extra={
+        "execution_id": "abc123",
+        "duration_ms": 42,
+        "success": True,
+        "stdout_lines": 10,
+        "stderr_lines": 0
+    }
+)
 ```
 
-## Documentation
+## References
 
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Complete deployment instructions
-- [Secure Architecture](k8s/doc/SECURE_ARCHITECTURE.md) - Detailed architecture explanation
-- [WASM Setup](k8s/doc/WASM_REPL_SETUP.md) - WASM-specific documentation
-- [Quick Start](WASM_QUICKSTART.md) - Quick start guide
-
-## Key Files
-
-| File | Purpose |
-|------|--------|
-| [Dockerfile.rlm](Dockerfile.rlm) | RLM inference container |
-| [Dockerfile.wasm](Dockerfile.wasm) | WASM execution container |
-| [k8s/rlm-deployment.yaml](k8s/rlm-deployment.yaml) | RLM k8s deployment |
-| [k8s/wasm-repl-deployment.yaml](k8s/wasm-repl-deployment.yaml) | WASM k8s deployment |
-| [k8s/network-policies.yaml](k8s/network-policies.yaml) | Network security |
-| [rlm/rlm_service.py](rlm/rlm_service.py) | RLM HTTP service |
-| [rlm/repl_remote.py](rlm/repl_remote.py) | Remote REPL client |
-| [rlm/repl_wasm.py](rlm/repl_wasm.py) | WASM executor |
-| [rlm/repl_wasm_service.py](rlm/repl_wasm_service.py) | WASM HTTP service |
-| [tests/test_wasm_repl.py](tests/test_wasm_repl.py) | Test suite |
-
-## Conclusion
-
-**Yes, the runtime lives separately** in a dedicated WASM execution plane. This provides:
-
-✅ **Maximum Security**: Complete isolation between LLM inference and code execution
-✅ **Scalability**: Independent scaling of each component
-✅ **Reliability**: High availability with multiple replicas
-✅ **Maintainability**: Clear separation of concerns
-✅ **Observability**: Comprehensive monitoring and logging
-
-The separate execution plane ensures that even if the WASM service is compromised, the LLM API keys and sensitive data remain protected.
-
----
-
-**To deploy**: Follow the [Deployment Guide](DEPLOYMENT_GUIDE.md)
-**To understand**: Read the [Secure Architecture](k8s/doc/SECURE_ARCHITECTURE.md) documentation
-**To test**: Run the [test suite](tests/test_wasm_repl.py)
+- [Main RLM Architecture Guide](/Users/rexsasori/rlm-minimal/rlm/ARCHITECTURE_GUIDE.md)
+- [Kubernetes Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+- [Pyodide Documentation](https://pyodide.org/)
+- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [WASM Quickstart](WASM_QUICKSTART.md)

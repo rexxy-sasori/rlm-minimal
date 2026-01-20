@@ -1,5 +1,7 @@
 # WASM REPL Quick Start Guide
 
+> **Note:** For complete documentation including scaling, monitoring, and security, see [WASM_REPL_SETUP.md](/Users/rexsasori/rlm-minimal/k8s/doc/WASM_REPL_SETUP.md)
+
 This guide helps you quickly set up and deploy the WASM-based REPL environment for RLM in Kubernetes.
 
 ## What's Included
@@ -10,7 +12,7 @@ This guide helps you quickly set up and deploy the WASM-based REPL environment f
 - **Docker Image**: [Dockerfile.wasm](Dockerfile.wasm) - Container image definition
 - **Requirements**: [requirements-wasm.txt](requirements-wasm.txt) - Python dependencies
 - **Tests**: [test_wasm_repl.py](tests/test_wasm_repl.py) - Test suite
-- **Documentation**: [WASM_REPL_SETUP.md](k8s/doc/WASM_REPL_SETUP.md) - Complete documentation
+- **Complete Documentation**: [WASM_REPL_SETUP.md](/Users/rexsasori/rlm-minimal/k8s/doc/WASM_REPL_SETUP.md) - Full setup guide
 
 ## Quick Deployment (5 Steps)
 

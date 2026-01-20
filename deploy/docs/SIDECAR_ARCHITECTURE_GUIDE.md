@@ -1,5 +1,7 @@
 # Sidecar Architecture Guide for RLM
 
+> **Note:** This is Architecture 2 (Same-Pod Execution) in the [main RLM Architecture Guide](/Users/rexsasori/rlm-minimal/rlm/ARCHITECTURE_GUIDE.md). Refer to the main guide for architecture comparison, pros/cons, and use cases.
+
 ## Overview
 
 The sidecar architecture provides a secure, stateful execution environment for RLM inference by colocating the RLM inference service with a WASM manager in the same Kubernetes pod. This pattern ensures:
@@ -198,124 +200,135 @@ async def test_state():
         # Step 4: Verify change (persists!)
         result = await factory.execute_in_session(session_id, "x")
         print(f"New x: {result}")  # Output: 52
-        
+    
     finally:
-        await factory.destroy_session(session_id)
+        # Cleanup session
+        await factory.delete_session(session_id)
 
-# Run test
+# Run
 asyncio.run(test_state())
 ```
 
-## API Endpoints
+## Monitoring
 
-### WASM Manager API
+### Metrics
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/session` | POST | Create new WASM session |
-| `/session/{session_id}/execute` | POST | Execute code in session |
-| `/session/{session_id}` | DELETE | Destroy session |
-| `/sessions` | GET | List active sessions |
-| `/sessions` | DELETE | Cleanup all sessions |
+**RLM Inference Container:**
+- `rlm_inference_requests_total`: Total inference requests
+- `rlm_inference_duration_seconds`: Inference duration histogram
+- `rlm_code_generated_total`: Total code generation events
 
-### RLM Inference API
+**WASM Manager Container:**
+- `wasm_sessions_active`: Active sessions count
+- `wasm_execution_duration_seconds`: Execution duration histogram
+- `wasm_execution_errors_total`: Execution errors count
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/infer` | POST | Run RLM inference |
-| `/health` | GET | Health check |
-| `/ready` | GET | Readiness check |
+### Logging
 
-## Security
-
-### Network Policies
-
-- **Ingress:** Only allow access to RLM API from authorized services
-- **Egress:** RLM can only communicate with WASM Manager on localhost
-- **WASM Manager:** Only accepts requests from localhost (RLM)
-
-### Sandboxing
-
-- **Pyodide Runtime:** Isolated Python execution
-- **No Filesystem Access:** WASM cannot access host files
-- **No Network Access:** WASM cannot make network requests
-- **Memory Limits:** Each WASM instance has memory limits
-- **Execution Timeouts:** Prevent infinite loops
-
-## Performance
-
-### Latency Comparison
-
-| Operation | Local Execution | Remote WASM | Sidecar WASM |
-|-----------|----------------|-------------|--------------|
-| Session Creation | <1ms | 50-100ms | <10ms |
-| Code Execution | <1ms | 100-200ms | 10-30ms |
-| Session Cleanup | <1ms | 50-100ms | <10ms |
-
-### Scalability
-
-- **Horizontal Scaling:** Deploy multiple pods for increased throughput
-- **Session Isolation:** Each pod manages its own sessions
-- **Resource Efficiency:** WASM runtimes share memory where possible
+```yaml
+# Example log aggregation
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rlm-sidecar-log-config
+data:
+  logstash.conf: |
+    input {
+      kubernetes {
+        container => "rlm-inference"
+      }
+      kubernetes {
+        container => "wasm-manager"
+      }
+    }
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-| Issue | Possible Cause | Solution |
-|-------|----------------|----------|
-| Session not found | Session expired or cleaned up | Create new session |
-| Pyodide loading failed | Network issue | Check internet access in pod |
-| Memory limit exceeded | Too many concurrent sessions | Increase WASM Manager memory |
-| Execution timeout | Infinite loop in code | Set shorter timeouts |
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Session creation fails | WASM manager not ready | Check container health: `kubectl exec <pod> -c wasm-manager -- curl http://localhost:8080/health` |
+| High latency | Resource constraints | Increase CPU/memory limits in deployment |
+| Session timeout | Session TTL expired | Increase `SESSION_TTL` environment variable |
+| Connection refused | Port mismatch | Verify WASM manager is listening on port 8080 |
 
-### Logging
+### Debug Commands
 
 ```bash
-# Check RLM logs
+# Check pod status
+kubectl describe pod <pod-name>
+
+# Check logs from both containers
 kubectl logs <pod-name> -c rlm-inference
-
-# Check WASM Manager logs
 kubectl logs <pod-name> -c wasm-manager
+
+# Exec into containers
+kubectl exec -it <pod-name> -c rlm-inference -- bash
+kubectl exec -it <pod-name> -c wasm-manager -- bash
+
+# Test WASM manager API
+kubectl exec <pod-name> -c rlm-inference -- curl http://localhost:8080/health
 ```
 
-### Debugging
+## Security
 
-```bash
-# Port forward to RLM API
-kubectl port-forward <pod-name> 8000:8000
+### Network Policies
 
-# Port forward to WASM Manager
-kubectl port-forward <pod-name> 8080:8080
-
-# Test WASM Manager directly
-curl -X POST http://localhost:8080/session
-curl -X POST http://localhost:8080/session/{session_id}/execute -d '{"code": "1 + 1"}'
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rlm-sidecar-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rlm
+      component: sidecar
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
 ```
 
-## Best Practices
+### Pod Security Policies
 
-1. **Use sidecar pattern** for production deployments
-2. **Set appropriate resource limits** based on expected load
-3. **Monitor session counts** to avoid resource exhaustion
-4. **Implement proper cleanup** to avoid orphaned sessions
-5. **Use network policies** to restrict access
-6. **Rotate sessions** periodically for security
-7. **Test with realistic workloads** before production
-
-## Conclusion
-
-The sidecar architecture provides an optimal balance of:
-- **Security** (isolated execution)
-- **Performance** (low latency)
-- **Functionality** (state persistence)
-- **Scalability** (session management)
-
-This pattern is recommended for production deployments where secure, stateful code execution is required during RLM inference.
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: rlm-sidecar-psp
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+  - ALL
+  volumes:
+  - 'emptyDir'
+  - 'secret'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    rule: 'RunAsAny'
+```
 
 ## References
 
-- [Kubernetes Sidecar Pattern](https://kubernetes.io/docs/concepts/workloads/pods/#workload-resources-for-managing-pods)
-- [Pyodide Documentation](https://pyodide.org/en/stable/)
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [RLM Architecture Guide](../rlm/ARCHITECTURE_GUIDE.md)
+- [Main RLM Architecture Guide](/Users/rexsasori/rlm-minimal/rlm/ARCHITECTURE_GUIDE.md)
+- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [Kubernetes Sidecar Pattern](https://kubernetes.io/docs/concepts/workloads/pods/)
+- [Pyodide Documentation](https://pyodide.org/)

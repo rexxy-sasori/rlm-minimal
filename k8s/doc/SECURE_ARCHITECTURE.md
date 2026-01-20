@@ -1,5 +1,7 @@
 # Secure Architecture for RLM with WASM Code Execution
 
+> **Note:** This is Architecture 3 (Different-Pod Execution) in the [main RLM Architecture Guide](/Users/rexsasori/rlm-minimal/rlm/ARCHITECTURE_GUIDE.md). Refer to the main guide for architecture comparison, pros/cons, and use cases.
+
 ## Problem Statement
 
 During RLM inference, the LLM generates Python code that needs to be executed. This creates a security risk:
@@ -100,339 +102,209 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: rlm-inference
+          app: rlm
     ports:
     - protocol: TCP
       port: 8000
 ```
 
-### Resource Isolation
+```yaml
+# Network policy for RLM service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rlm-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rlm
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: wasm-repl
+    ports:
+    - protocol: TCP
+      port: 8000
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+```
+
+### Resource Limits
 
 ```yaml
-# Per-pod resource limits
+# RLM inference pod resources
 resources:
   requests:
-    memory: "512Mi"
+    memory: "2Gi"
+    cpu: "1000m"
+  limits:
+    memory: "4Gi"
+    cpu: "2000m"
+```
+
+```yaml
+# WASM execution pod resources
+resources:
+  requests:
+    memory: "1Gi"
     cpu: "500m"
   limits:
-    memory: "1Gi"
+    memory: "2Gi"
     cpu: "1000m"
 ```
 
-### Per-Execution Limits
-
-```python
-# In wasm executor
-timeout: 30 seconds  # Max execution time
-memory_limit: 256Mi  # Max memory per execution
-cpu_shares: 256      # CPU allocation
-```
-
-### Secrets Management
-
-- **LLM API Keys**: Only in RLM inference pods (k8s Secret)
-- **WASM Service**: No access to LLM keys
-- **Communication**: mTLS between RLM and WASM service (optional)
-
-## Data Flow
-
-```
-User Query
-    │
-    ▼
-┌─────────────┐
-│  RLM Pod    │ ─────────────────────────────────┐
-│  (Inference)│                                  │
-└─────────────┘                                  │
-    │                                            │
-    │ 1. Generate code                            │
-    │                                            │
-    ▼                                            │
-┌──────────────────┐                             │
-│  Code Generated  │                             │
-└──────────────────┘                             │
-    │                                            │
-    │ 2. Send to WASM Service                    │
-    │                                            │
-    ▼                                            │
-┌──────────────────┐                             │
-│  HTTP Request    │                             │
-│  POST /execute   │                             │
-└──────────────────┘                             │
-    │                                            │
-    ▼                                            │
-┌─────────────┐                                  │
-│ WASM Pod    │  3. Execute in sandbox           │
-│ (Sandbox)   │                                  │
-└─────────────┘                                  │
-    │                                            │
-    │ 4. Return results                          │
-    │                                            │
-    ▼                                            │
-┌──────────────────┐                             │
-│  HTTP Response   │                             │
-│  {stdout, stderr,│                             │
-│   locals, time}  │                             │
-└──────────────────┘                             │
-    │                                            │
-    ▼                                            │
-┌─────────────┐                                  │
-│  RLM Pod    │ ◄────────────────────────────────┘
-│  (Inference)│  5. Continue inference
-└─────────────┘
-    │
-    │ 6. Final answer
-    ▼
-User Response
-```
-
-## Deployment Strategy
-
-### Step 1: Deploy WASM Execution Service
-
-```bash
-# Create secrets (if needed for WASM service)
-kubectl create secret generic wasm-secrets \
-  --from-literal=api-key="internal-key"
-
-# Deploy WASM service
-kubectl apply -f k8s/wasm-repl-deployment.yaml
-
-# Verify
-kubectl get pods -l app=wasm-repl
-```
-
-### Step 2: Deploy RLM Inference Service
-
-```bash
-# Create LLM API key secret
-kubectl create secret generic llm-secrets \
-  --from-literal=api-key="your-llm-key"
-
-# Deploy RLM
-kubectl apply -f k8s/rlm-deployment.yaml
-
-# Verify
-kubectl get pods -l app=rlm-inference
-```
-
-### Step 3: Configure Network Policies
-
-```bash
-# Apply network isolation
-kubectl apply -f k8s/network-policies.yaml
-```
-
-## Implementation Changes
-
-### Update RLM to Use Remote Execution
-
-```python
-# rlm/repl.py - Replace local execution with remote
-
-class RemoteREPLEnv:
-    """REPL environment that uses remote WASM service."""
-    
-    def __init__(self, wasm_service_url: str):
-        self.wasm_service_url = wasm_service_url
-        self.session_id = uuid.uuid4().hex
-    
-    def code_execution(self, code: str) -> REPLResult:
-        """Execute code remotely via HTTP."""
-        import requests
-        
-        response = requests.post(
-            f"{self.wasm_service_url}/execute",
-            json={
-                "code": code,
-                "session_id": self.session_id,
-                "timeout": 30
-            },
-            timeout=35
-        )
-        
-        result = response.json()
-        return REPLResult(
-            stdout=result.get('stdout', ''),
-            stderr=result.get('stderr', ''),
-            locals=result.get('locals', {}),
-            execution_time=result.get('execution_time', 0)
-        )
-```
-
-### Update RLM_REPL Configuration
-
-```python
-# rlm/rlm_repl.py - Use remote execution
-
-class RLM_REPL(RLM):
-    
-    def __init__(self, wasm_service_url: Optional[str] = None, **kwargs):
-        self.wasm_service_url = wasm_service_url or os.getenv(
-            'WASM_SERVICE_URL', 'http://wasm-repl-service:8000'
-        )
-        super().__init__(**kwargs)
-    
-    def setup_context(self, context, query=None):
-        # Use remote REPL instead of local
-        self.repl_env = RemoteREPLEnv(self.wasm_service_url)
-        # ... rest of setup
-```
-
-## Scaling Considerations
-
-### Horizontal Scaling
-
-Both components scale independently:
-
-```bash
-# Scale RLM inference (handles more concurrent queries)
-kubectl scale deployment rlm-inference --replicas=10
-
-# Scale WASM execution (handles more code execution)
-kubectl scale deployment wasm-repl --replicas=20
-```
-
-### Autoscaling
+### Pod Security Policy
 
 ```yaml
-# HPA for RLM (based on CPU)
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
 metadata:
-  name: rlm-hpa
+  name: rlm-secure-psp
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: rlm-inference
-  minReplicas: 3
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-
-# HPA for WASM (based on CPU and queue length)
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: wasm-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: wasm-repl
-  minReplicas: 5
-  maxReplicas: 50
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 60
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+  - ALL
+  volumes:
+  - 'emptyDir'
+  - 'secret'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1
+      max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1
+      max: 65535
 ```
 
-## Monitoring and Observability
+## Defense in Depth
 
-### Metrics to Track
+| Security Layer | Implementation |
+|----------------|----------------|
+| **1. Network** | Kubernetes Network Policies |
+| **2. Pod** | Isolated deployments, PSP |
+| **3. Container** | Non-root user, read-only filesystem |
+| **4. Runtime** | WASM sandbox (Pyodide) |
+| **5. Application** | API authentication, rate limiting |
+| **6. Code** | Input validation, output sanitization |
 
+## Deployment
+
+### Prerequisites
+
+- Kubernetes cluster (v1.19+)
+- kubectl configured
+- Container registry access
+- LLM API key
+
+### Deployment Steps
+
+```bash
+# 1. Create namespace
+kubectl create namespace rlm
+
+# 2. Create secrets
+kubectl create secret generic rlm-secrets -n rlm \
+  --from-literal=llm-api-key="your-key"
+
+# 3. Deploy RLM inference
+kubectl apply -n rlm -f k8s/rlm-deployment.yaml
+kubectl apply -n rlm -f k8s/rlm-service.yaml
+
+# 4. Deploy WASM execution
+kubectl apply -n rlm -f k8s/wasm-repl-deployment.yaml
+kubectl apply -n rlm -f k8s/wasm-repl-service.yaml
+
+# 5. Apply network policies
+kubectl apply -n rlm -f k8s/network-policies.yaml
+
+# 6. Verify deployment
+kubectl get pods -n rlm
+kubectl get services -n rlm
 ```
-# RLM Inference Metrics
-rlm_inference_requests_total
-rlm_inference_duration_seconds
-rlm_code_generated_total
-rlm_code_execution_requests_total
 
-# WASM Execution Metrics
-wasm_execution_requests_total
-wasm_execution_duration_seconds
-wasm_execution_errors_total
-wasm_execution_timeout_total
-wasm_memory_usage_bytes
-wasm_cpu_usage_seconds
+## Monitoring & Observability
+
+### Prometheus Metrics
+
+```yaml
+# Example ServiceMonitor for RLM
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rlm-monitor
+spec:
+  selector:
+    matchLabels:
+      app: rlm
+  endpoints:
+  - port: http
+    path: /metrics
 ```
 
 ### Logging
 
 ```yaml
-# Structured logging configuration
+# Example Fluentd configuration
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: logging-config
+  name: rlm-log-config
 data:
-  log-level: "INFO"
-  log-format: "json"
+  fluentd.conf: |
+    <source>
+      @type tail
+      path /var/log/containers/*rlm*.log
+      tag kubernetes.rlm
+      <parse>
+        @type json
+      </parse>
+    </source>
 ```
 
-## Disaster Recovery
+## Compliance Considerations
 
-### Backup Strategy
+### Data Protection
 
-- No persistent state in WASM pods (stateless)
-- RLM inference can be restarted from scratch
-- Use k8s rolling updates for zero downtime deployments
+- ✅ LLM API keys never exposed to execution plane
+- ✅ No sensitive data in WASM sandbox
+- ✅ Audit logging for all code execution
+- ✅ Encryption in transit (TLS)
 
-### High Availability
+### Access Control
 
-```yaml
-# Multiple replicas for redundancy
-replicas: 3
+- ✅ RBAC for Kubernetes resources
+- ✅ Network policies restrict traffic
+- ✅ API authentication for external access
+- ✅ Principle of least privilege
 
-# Pod disruption budget
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: rlm-pdb
-spec:
-  minAvailable: 2
-  selector:
-    matchLabels:
-      app: rlm-inference
-```
+## References
 
-## Security Checklist
-
-- [ ] LLM API keys stored in k8s Secrets
-- [ ] WASM service has no access to LLM keys
-- [ ] Network policies restrict traffic flow
-- [ ] Resource limits set on all pods
-- [ ] WASM sandbox enabled for code execution
-- [ ] Per-execution timeouts enforced
-- [ ] No privileged containers
-- [ ] Non-root users for all containers
-- [ ] Regular security updates for base images
-- [ ] Audit logging enabled
-
-## Performance Optimization
-
-1. **Connection Pooling**: Reuse HTTP connections between RLM and WASM
-2. **Request Batching**: Batch multiple code executions when possible
-3. **Caching**: Cache frequent code patterns
-4. **Pre-warming**: Keep WASM instances ready
-5. **Load Balancing**: Distribute requests evenly
-6. **Proximity**: Deploy RLM and WASM in same AZ for low latency
-
-## Cost Considerations
-
-- **WASM Pods**: Lower cost than RLM pods (no GPU, less memory)
-- **Scaling**: Scale WASM independently based on code execution needs
-- **Spot Instances**: Use spot instances for WASM execution (stateless)
-- **Idle Scaling**: Scale down WASM replicas during low traffic
-
-## Conclusion
-
-This architecture provides:
-
-✅ **Security**: Complete isolation between LLM inference and code execution
-✅ **Scalability**: Independent scaling of each component
-✅ **Reliability**: Stateless design with redundancy
-✅ **Observability**: Comprehensive metrics and logging
-✅ **Maintainability**: Clear separation of concerns
-
-The separate execution plane ensures that even if the WASM service is compromised, the LLM API keys and sensitive data remain protected.
+- [Main RLM Architecture Guide](/Users/rexsasori/rlm-minimal/rlm/ARCHITECTURE_GUIDE.md)
+- [Kubernetes Network Policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+- [Pyodide Documentation](https://pyodide.org/)
+- [Pod Security Policies](https://kubernetes.io/docs/concepts/policy/pod-security-policy/)
+- [Deployment Guide](/Users/rexsasori/rlm-minimal/deploy/docs/DEPLOYMENT_GUIDE.md)
+- [WASM Quickstart](/Users/rexsasori/rlm-minimal/deploy/docs/WASM_QUICKSTART.md)
