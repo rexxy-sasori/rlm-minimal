@@ -108,12 +108,12 @@ kubectl apply -f deploy/k8s/network-policies.yaml
   - **Architecture 3**: Different-Pod Execution (remote)
 - **[Sidecar Architecture Guide](deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md)**: Detailed Architecture 2 guide with deployment instructions
 - **[Secure WASM Architecture Summary](deploy/docs/SECURE_WASM_ARCHITECTURE_SUMMARY.md)**: Architecture 3 quick deployment guide
-- **[Secure Architecture](k8s/doc/SECURE_ARCHITECTURE.md)**: Architecture 3 security details
+- **[Secure Architecture](deploy/k8s/doc/SECURE_ARCHITECTURE.md)**: Architecture 3 security details
 
 ### Deployment Guides
 - **[Deployment Guide](deploy/docs/DEPLOYMENT_GUIDE.md)**: Complete production deployment guide
 - **[WASM Quick Start](deploy/docs/WASM_QUICKSTART.md)**: WASM execution quick start
-- **[WASM REPL Setup](k8s/doc/WASM_REPL_SETUP.md)**: Complete WASM REPL setup guide
+- **[WASM REPL Setup](deploy/k8s/doc/WASM_REPL_SETUP.md)**: Complete WASM REPL setup guide
 
 ### Benchmark Documentation
 - **[Benchmark Analysis](benchmarks/docs/BENCHMARK_ANALYSIS.md)**: Analysis of RLM benchmarks (OOLONG, RULER, Deep Research)
