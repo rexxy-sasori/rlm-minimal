@@ -1,0 +1,15 @@
+# Core dependencies
+openai>=1.0.0
+dotenv>=1.0.0
+rich>=13.7.0
+
+# WASM/Pyodide dependencies
+pyodide>=0.26.0
+pyodide-build>=0.26.0
+
+# Web service dependencies
+aiofiles>=23.0.0
+
+# TimescaleDB dependencies (optional)
+psycopg2-binary>=2.9.9
+python-dotenv>=1.0.0

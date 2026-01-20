@@ -1,0 +1,143 @@
+RLM Package Structure
+=====================
+
+rlm/
+├── __init__.py              # Main package exports
+├── rlm.py                   # Base RLM class
+├── ARCHITECTURE_GUIDE.md    # Architecture documentation
+│
+├── local/                    # Local Execution Architecture
+│   ├── __init__.py           # Exports: REPLEnv, RLM_REPL
+│   ├── repl.py               # Local REPL environment
+│   │   ├── REPLEnv           # Local code execution
+│   │   ├── Sub_RLM           # Simple RLM for recursion
+│   │   └── REPLResult        # Execution result dataclass
+│   ├── rlm_repl.py           # RLM with local execution
+│   │   └── RLM_REPL          # Main RLM class (local)
+│   └── rlm_repl_tsdb.py      # RLM with TimescaleDB logging
+│
+├── remote/                   # Remote Execution Architecture
+│   ├── __init__.py           # Exports: RemoteREPLEnv, RemoteREPLFactory
+│   ├── repl_remote.py        # Remote REPL client
+│   │   ├── RemoteREPLEnv     # Remote code execution
+│   │   ├── RemoteREPLFactory # Factory for creating remote REPLs
+│   │   └── RemoteExecutionConfig # Configuration
+│   └── rlm_service.py        # RLM HTTP service
+│       └── RLMHandler        # HTTP request handler
+│
+├── wasm/                     # WASM Execution Engine
+│   ├── __init__.py           # Exports: WASMREPLExecutor, WASMResult
+│   ├── repl_wasm.py          # WASM executor
+│   │   ├── WASMREPLExecutor  # Pyodide-based executor
+│   │   ├── WASMResult        # WASM execution result
+│   │   └── WASMREPLEnv       # WASM REPL environment
+│   └── repl_wasm_service.py  # WASM HTTP service
+│       └── WASMREPLHandler   # WASM HTTP request handler
+│
+├── utils/                    # Shared Utilities
+│   ├── __init__.py
+│   ├── llm.py                # LLM client wrapper
+│   ├── prompts.py            # Prompt templates
+│   └── utils.py              # Utility functions
+│
+└── logger/                   # Logging Components
+    ├── __init__.py
+    ├── root_logger.py        # Main logger
+    ├── repl_logger.py        # REPL-specific logger
+    ├── timescale_client.py   # TimescaleDB client
+    ├── doc/                  # Logger documentation
+    ├── examples/             # Logger usage examples
+    └── sql/                  # Database schemas
+
+
+Architecture Comparison
+=======================
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    LOCAL EXECUTION                              │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Single Process                              │   │
+│  │                                                          │   │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │   │
+│  │  │  LLM API   │───▶│  Code Gen  │───▶│  Execution  │  │   │
+│  │  │  Client    │    │  (RLM)     │    │  (Local)    │  │   │
+│  │  └─────────────┘    └─────────────┘    └──────┬──────┘  │   │
+│  │                                                │         │   │
+│  │                                                ▼         │   │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │   │
+│  │  │  Results   │◀───│  Orchestr. │◀───│  Results   │  │   │
+│  │  │  Returned  │    │  (RLM)     │    │  Parsed    │  │   │
+│  │  └─────────────┘    └─────────────┘    └─────────────┘  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Pros: Simple, Low Latency, Easy Debugging                      │
+│  Cons: Security Risk, No Isolation                              │
+│  Use: Development, Testing, Trusted Code                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  REMOTE WASM EXECUTION                          │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              RLM Inference Pod                          │   │
+│  │                                                          │   │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │   │
+│  │  │  LLM API   │───▶│  Code Gen  │───▶│  HTTP Client │  │   │
+│  │  │  Client    │    │  (RLM)     │    │  (Remote)    │  │   │
+│  │  └─────────────┘    └─────────────┘    └──────┬──────┘  │   │
+│  └────────────────────────────────────────────────┼─────────┘   │
+│                                                   │              │
+│                                                   │ HTTP POST    │
+│                                                   ▼              │
+│  ┌────────────────────────────────────────────────┼─────────┐   │
+│  │              WASM Execution Pod                    │   │   │
+│  │                                                  │   │   │   │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────┼───┐  │   │
+│  │  │  HTTP      │◀───│  WASM      │◀───│  Pyodide │   │  │   │
+│  │  │  Server    │    │  Executor  │    │  Sandbox │   │  │   │
+│  │  └──────┬──────┘    └─────────────┘    └─────────────┘  │   │
+│  │         │                                               │   │   │
+│  │         │ HTTP Response                                 │   │   │
+│  │         ▼                                               │   │   │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │   │
+│  │  │  Results   │───▶│  Response   │───▶│  Return     │  │   │   │
+│  │  │  Formatted │    │  Builder    │    │  to RLM     │  │   │   │
+│  │  └─────────────┘    └─────────────┘    └─────────────┘  │   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Pros: Maximum Security, Isolation, Scalable                    │
+│  Cons: Complex Setup, Network Latency                           │
+│  Use: Production, High Security, Untrusted Code                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+
+Quick Reference
+===============
+
+Local Execution:
+    from rlm.local import RLM_REPL
+    rlm = RLM_REPL(model="gpt-5")
+    result = rlm.completion(context, query)
+
+Remote Execution:
+    from rlm.remote import RemoteREPLFactory
+    factory = RemoteREPLFactory(wasm_service_url="http://wasm:8000")
+    rlm = RLM_REPL(model="gpt-5")
+    result = rlm.completion(context, query)
+
+WASM Service:
+    python -m rlm.wasm.repl_wasm_service --port 8000
+
+Deployment:
+    kubectl apply -f deploy/k8s/rlm-deployment.yaml
+    kubectl apply -f deploy/k8s/wasm-repl-deployment.yaml
+    kubectl apply -f deploy/k8s/network-policies.yaml
+
+Documentation:
+    - ARCHITECTURE_GUIDE.md - This file
+    - ../deploy/docs/DEPLOYMENT_GUIDE.md - Deployment guide
+    - ../deploy/docs/SECURE_ARCHITECTURE_SUMMARY.md - Security overview
+    - ../deploy/docs/WASM_QUICKSTART.md - WASM quick start

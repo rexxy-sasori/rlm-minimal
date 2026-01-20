@@ -1,0 +1,66 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rlm-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: rlm-inference
+  policyTypes:
+  - Egress
+  egress:
+  # Allow traffic to WASM service
+  - to:
+    - podSelector:
+        matchLabels:
+          app: wasm-repl
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow traffic to LLM API (external)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wasm-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: wasm-repl
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic only from RLM inference pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app: rlm-inference
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress

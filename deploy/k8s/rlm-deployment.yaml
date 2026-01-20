@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rlm-inference-deployment
+  labels:
+    app: rlm-inference
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rlm-inference
+  template:
+    metadata:
+      labels:
+        app: rlm-inference
+    spec:
+      containers:
+      - name: rlm-container
+        image: rlm-minimal:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: api-key
+        - name: LLM_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: base-url
+        - name: LLM_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: model
+        - name: WASM_SERVICE_URL
+          value: "http://wasm-repl-service:8000"
+        - name: MAX_DEPTH
+          value: "3"
+        - name: MAX_ITERATIONS
+          value: "20"
+        - name: EXECUTION_TIMEOUT
+          value: "30"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1000m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: temp-data
+          mountPath: /tmp/rlm-data
+      volumes:
+      - name: temp-data
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rlm-inference-service
+spec:
+  selector:
+    app: rlm-inference
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rlm-pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: rlm-inference
