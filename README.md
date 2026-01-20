@@ -74,7 +74,21 @@ print(result)
 "
 ```
 
-### Option 3: Kubernetes Deployment
+### Option 3: Sidecar Architecture (Recommended for Production)
+
+```bash
+# Build Docker images
+docker build -t rlm-inference:latest -f deploy/docker/Dockerfile.rlm-sidecar .
+docker build -t wasm-manager:latest -f deploy/docker/Dockerfile.wasm-manager .
+
+# Deploy to Kubernetes
+kubectl apply -f deploy/k8s/rlm-sidecar-deployment.yaml
+
+# Test state persistence
+python examples/sidecar_state_persistence.py
+```
+
+### Option 4: Kubernetes Deployment (Legacy)
 
 See [DEPLOYMENT_GUIDE.md](deploy/docs/DEPLOYMENT_GUIDE.md) for complete instructions.
 
@@ -89,11 +103,12 @@ kubectl apply -f deploy/k8s/network-policies.yaml
 
 ### Architecture Guides
 - **[Architecture Guide](rlm/ARCHITECTURE_GUIDE.md)**: Complete guide to both architectures
-- **[Organization Summary](ORGANIZATION_SUMMARY.md)**: Complete reorganization summary
+- **[Sidecar Architecture Guide](deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md)**: Detailed sidecar architecture guide
 - **[Structure Diagram](rlm/STRUCTURE.txt)**: Visual package structure
 
 ### Deployment Guides
 - **[Deployment Guide](deploy/docs/DEPLOYMENT_GUIDE.md)**: Complete production deployment guide
+- **[Sidecar Architecture Guide](deploy/docs/SIDECAR_ARCHITECTURE_GUIDE.md)**: Sidecar deployment guide
 - **[Secure Architecture](deploy/docs/SECURE_ARCHITECTURE_SUMMARY.md)**: Security overview
 - **[WASM Quick Start](deploy/docs/WASM_QUICKSTART.md)**: WASM execution quick start
 

@@ -13,5 +13,14 @@ Usage:
 """
 
 from rlm.remote.repl_remote import RemoteREPLEnv, RemoteREPLFactory, RemoteExecutionConfig
+from rlm.remote.repl_sidecar import SidecarREPLEnv, SidecarREPLFactory, SidecarExecutionConfig, create_sidecar_repl_factory
 
-__all__ = ["RemoteREPLEnv", "RemoteREPLFactory", "RemoteExecutionConfig"]
+__all__ = [
+    "RemoteREPLEnv", 
+    "RemoteREPLFactory", 
+    "RemoteExecutionConfig",
+    "SidecarREPLEnv",
+    "SidecarREPLFactory",
+    "SidecarExecutionConfig",
+    "create_sidecar_repl_factory"
+]

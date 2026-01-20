@@ -1,0 +1,30 @@
+# Base image for RLM inference with sidecar support
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV WASM_MANAGER_SERVICE_URL=http://localhost:8080
+ENV MODEL_PATH=/app/models
+ENV LOG_LEVEL=INFO
+
+# Expose port
+EXPOSE 8000
+
+# Start RLM service
+CMD ["python", "-m", "rlm.remote.rlm_service"]

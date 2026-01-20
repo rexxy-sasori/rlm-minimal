@@ -1,0 +1,201 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rlm-sidecar
+  namespace: default
+  labels:
+    app: rlm
+    component: sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rlm
+      component: sidecar
+  template:
+    metadata:
+      labels:
+        app: rlm
+        component: sidecar
+    spec:
+      containers:
+        # Container 1: RLM Inference
+        - name: rlm-inference
+          image: rlm-inference:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: WASM_MANAGER_SERVICE_URL
+              value: "http://localhost:8080"
+            - name: MODEL_PATH
+              value: "/app/models"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+            - name: config
+              mountPath: /app/config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+
+        # Container 2: WASM Manager (Sidecar)
+        - name: wasm-manager
+          image: wasm-manager:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: wasm-http
+          env:
+            - name: PYODIDE_URL
+              value: "https://cdn.jsdelivr.net/pyodide/v0.26.0/full/"
+            - name: MAX_SESSIONS
+              value: "100"
+            - name: SESSION_TTL
+              value: "3600"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /sessions
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /sessions
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: rlm-models-pvc
+        - name: config
+          configMap:
+            name: rlm-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rlm-sidecar-service
+  namespace: default
+  labels:
+    app: rlm
+    component: sidecar
+spec:
+  selector:
+    app: rlm
+    component: sidecar
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rlm-sidecar-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: rlm
+      component: sidecar
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: rlm
+          component: sidecar
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: rlm
+          component: sidecar
+    ports:
+    - protocol: TCP
+      port: 8080
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rlm-config
+  namespace: default
+data:
+  config.json: |
+    {
+      "model": {
+        "name": "llama3",
+        "type": "llm"
+      },
+      "execution": {
+        "mode": "sidecar",
+        "wasm_service_url": "http://localhost:8080"
+      },
+      "logging": {
+        "level": "INFO",
+        "format": "json"
+      }
+    }
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rlm-models-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

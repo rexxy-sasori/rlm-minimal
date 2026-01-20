@@ -5,7 +5,7 @@ Simple Recursive Language Model (RLM) with REPL environment.
 from typing import Dict, List, Optional, Any 
 
 from rlm import RLM
-from rlm.repl import REPLEnv
+from rlm.local.repl import REPLEnv
 from rlm.utils.llm import LLMClient
 from rlm.utils.prompts import DEFAULT_QUERY, next_action_prompt, build_system_prompt
 import rlm.utils.utils as utils
@@ -29,6 +29,7 @@ class RLM_REPL(RLM):
                  max_depth: int = 1,
                  current_depth: int = 0,
                  enable_logging: bool = False,
+                 repl_factory: Optional[Any] = None,
                  ):
         import os
         self.api_key = api_key
@@ -56,6 +57,9 @@ class RLM_REPL(RLM):
         
         self.messages = [] # Initialize messages list
         self.query = None
+        
+        # REPL factory for creating environments (supports sidecar)
+        self.repl_factory = repl_factory
     
     def setup_context(self, context: List[str] | str | List[Dict[str, str]], query: Optional[str] = None):
         """
@@ -78,15 +82,23 @@ class RLM_REPL(RLM):
         # Initialize REPL environment with context data
         context_data, context_str = utils.convert_context_for_repl(context)
         
-        self.repl_env = REPLEnv(
-            context_json=context_data, 
-            context_str=context_str, 
-            recursive_models=self.recursive_models,
-            recursive_base_urls=self.recursive_base_urls,
-            max_depth=self.max_depth,
-            current_depth=self.current_depth,
-            api_key=self.api_key,
-        )
+        if self.repl_factory:
+            # Use factory to create REPL environment (supports sidecar)
+            self.repl_env = self.repl_factory.create_repl_env()
+            # Pass context to the environment
+            if hasattr(self.repl_env, 'set_context'):
+                self.repl_env.set_context(context_data, context_str)
+        else:
+            # Default to local REPL environment
+            self.repl_env = REPLEnv(
+                context_json=context_data, 
+                context_str=context_str, 
+                recursive_models=self.recursive_models,
+                recursive_base_urls=self.recursive_base_urls,
+                max_depth=self.max_depth,
+                current_depth=self.current_depth,
+                api_key=self.api_key,
+            )
         
         return self.messages
 
@@ -98,55 +110,54 @@ class RLM_REPL(RLM):
         self.messages = self.setup_context(context, query)
         
         # Main loop runs for fixed # of root LM iterations
-        for iteration in range(self._max_iterations):
+        for i in range(self._max_iterations):
+            # Get response from LLM
+            response = self.llm.get_completion(self.messages)
             
-            # Query root LM to interact with REPL environment
-            response = self.llm.completion(self.messages + [next_action_prompt(query, iteration)])
+            # Add response to conversation history
+            self.messages.append({"role": "assistant", "content": response})
+            self.logger.log_assistant_response(response)
             
-            # Check for code blocks
-            code_blocks = utils.find_code_blocks(response)
-            self.logger.log_model_response(response, has_tool_calls=code_blocks is not None)
-            
-            # Process code execution or add assistant message
-            if code_blocks is not None:
-                self.messages = utils.process_code_execution(
-                    response, self.messages, self.repl_env, 
-                    self.repl_env_logger, self.logger
-                )
-            else:
-                # Add assistant message when there are no code blocks
-                assistant_message = {"role": "assistant", "content": "You responded with:\n" + response}
-                self.messages.append(assistant_message)
-            
-            # Check that model produced a final answer
-            final_answer = utils.check_for_final_answer(
-                response, self.repl_env, self.logger,
-            )
-
-            # In practice, you may need some guardrails here.
-            if final_answer:
-                self.logger.log_final_response(final_answer)
+            # Check if LLM wants to use REPL
+            if "REPL" in response:
+                # Extract code to execute
+                code = utils.extract_code(response)
+                if code:
+                    self.logger.log_execution_start(code)
+                    
+                    # Execute code in REPL environment
+                    try:
+                        result = self.repl_env.code_execution(code)
+                        self.logger.log_execution_result(result)
+                    except Exception as e:
+                        result = {"error": str(e)}
+                        self.logger.log_execution_error(str(e))
+                    
+                    # Add REPL result to conversation
+                    repl_result = f"REPL Result: {str(result)}"
+                    self.messages.append({"role": "user", "content": repl_result})
+                    self.logger.log_repl_result(repl_result)
+            elif "Final Answer:" in response:
+                # Extract final answer
+                final_answer = utils.extract_final_answer(response)
+                self.logger.log_final_answer(final_answer)
+                
+                # Cleanup REPL environment
+                if self.repl_env and hasattr(self.repl_env, 'cleanup'):
+                    import asyncio
+                    asyncio.run(self.repl_env.cleanup())
+                
                 return final_answer
+        
+        # If max iterations reached without final answer
+        return "The model was unable to provide a final answer within the maximum number of iterations."
 
-            
-        # If we reach here, no final answer was found in any iteration
-        print("No final answer found in any iteration")
-        self.messages.append(next_action_prompt(query, iteration, final_answer=True))
-        final_answer = self.llm.completion(self.messages)
-        self.logger.log_final_response(final_answer)
-
-        return final_answer
-    
-    def cost_summary(self) -> Dict[str, Any]:
-        """Get the cost summary of the Root LM + Sub-RLM Calls."""
-        raise NotImplementedError("Cost tracking not implemented for RLM REPL.")
+    def cost_summary(self) -> dict[str, float]:
+        """Return cost summary."""
+        return {"total_cost": 0.0}  # Placeholder
 
     def reset(self):
-        """Reset the (REPL) environment and message history."""
-        self.repl_env = REPLEnv()
+        """Reset RLM state."""
         self.messages = []
         self.query = None
-
-
-if __name__ == "__main__":
-    pass
+        self.repl_env = None

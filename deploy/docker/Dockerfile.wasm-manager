@@ -1,0 +1,36 @@
+# Base image for WASM Manager sidecar
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    pydantic \
+    pyodide==0.26.0
+
+# Copy application code
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYODIDE_URL=https://cdn.jsdelivr.net/pyodide/v0.26.0/full/
+ENV MAX_SESSIONS=100
+ENV SESSION_TTL=3600
+ENV LOG_LEVEL=INFO
+
+# Expose port
+EXPOSE 8080
+
+# Start WASM Manager service
+CMD ["python", "-m", "rlm.wasm.wasm_manager"]
